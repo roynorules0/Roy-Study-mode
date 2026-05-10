@@ -1,0 +1,8 @@
+{
+  "name": "Remix: Roy Study App_Fixed",
+  "description": "A premium AI-powered study productivity app featuring smart planning, persistent focus timers, and deep analytics.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": []
+}
