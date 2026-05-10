@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo } from 'react';
 import { Search, Loader2, Play, Bookmark, Clock, ArrowRight, Headphones, Trash2, X, RotateCcw, ListPlus, FolderPlus, ChevronRight, Hash, Library, Plus } from 'lucide-react';
 import { YouTubeVideo, VideoPlaylist, WatchHistory, HistoryItem } from '../../types';
 import { searchVideos } from '../../services/youtube';
@@ -20,6 +20,55 @@ interface YouTubeStudyProps {
   timerActive: boolean;
   onLectureStart?: () => void;
 }
+
+const VideoCard = memo(({ 
+  video, 
+  idx, 
+  progress, 
+  onPlay, 
+  onAddToPlaylist 
+}: { 
+  video: YouTubeVideo, 
+  idx: number, 
+  progress: number, 
+  onPlay: (v: YouTubeVideo) => void,
+  onAddToPlaylist: (v: YouTubeVideo) => void
+}) => (
+  <motion.div 
+    initial={{ opacity: 0, y: 10 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ delay: idx * 0.05 }}
+    className="group relative gpu"
+  >
+    <div onClick={() => onPlay(video)} className="cursor-pointer">
+      <div className="aspect-video rounded-3xl glass overflow-hidden relative mb-3">
+        <img src={video.thumbnail} alt={video.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" draggable={false} />
+        <div className="absolute bottom-3 right-3 p-2 rounded-xl glass text-white backdrop-blur-3xl">
+          <Play size={16} fill="white" />
+        </div>
+        {progress > 0 && (
+          <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-black/40">
+            <div className="h-full bg-indigo-500" style={{ width: `${progress}%` }} />
+          </div>
+        )}
+      </div>
+      <div className="px-1">
+        <h4 className="font-bold text-sm line-clamp-2 leading-tight group-hover:text-indigo-500 transition-colors uppercase tracking-tight">{video.title}</h4>
+        <div className="flex items-center gap-2 mt-2 opacity-50 text-[10px] font-bold uppercase tracking-widest">
+          <span>{video.channelTitle}</span>
+        </div>
+      </div>
+    </div>
+    
+    <button 
+      onClick={() => onAddToPlaylist(video)}
+      className="absolute top-2 right-2 p-2 rounded-xl glass bg-white/10 opacity-0 group-hover:opacity-100 transition-all hover:bg-indigo-500 hover:text-white"
+      title="Add to playlist"
+    >
+      <ListPlus size={16} />
+    </button>
+  </motion.div>
+));
 
 export default function YouTubeStudy({ apiKey, timeLeft, onResume, onPause, timerActive, onLectureStart }: YouTubeStudyProps) {
   const [query, setQuery] = useState("");
@@ -317,41 +366,14 @@ export default function YouTubeStudy({ apiKey, timeLeft, onResume, onPause, time
             >
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {videos.map((video, idx) => (
-                  <motion.div 
+                  <VideoCard
                     key={video.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: idx * 0.05 }}
-                    className="group relative"
-                  >
-                    <div onClick={() => playVideo(video)} className="cursor-pointer">
-                      <div className="aspect-video rounded-3xl glass overflow-hidden relative mb-3">
-                        <img src={video.thumbnail} alt={video.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-                        <div className="absolute bottom-3 right-3 p-2 rounded-xl glass text-white backdrop-blur-3xl">
-                          <Play size={16} fill="white" />
-                        </div>
-                        {getProgressPercent(video.id) > 0 && (
-                          <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-black/40">
-                            <div className="h-full bg-indigo-500" style={{ width: `${getProgressPercent(video.id)}%` }} />
-                          </div>
-                        )}
-                      </div>
-                      <div className="px-1">
-                        <h4 className="font-bold text-sm line-clamp-2 leading-tight group-hover:text-indigo-500 transition-colors uppercase tracking-tight">{video.title}</h4>
-                        <div className="flex items-center gap-2 mt-2 opacity-50 text-[10px] font-bold uppercase tracking-widest">
-                          <span>{video.channelTitle}</span>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <button 
-                      onClick={() => setAddingToPlaylist(video)}
-                      className="absolute top-2 right-2 p-2 rounded-xl glass bg-white/10 opacity-0 group-hover:opacity-100 transition-all hover:bg-indigo-500 hover:text-white"
-                      title="Add to playlist"
-                    >
-                      <ListPlus size={16} />
-                    </button>
-                  </motion.div>
+                    video={video}
+                    idx={idx}
+                    progress={getProgressPercent(video.id)}
+                    onPlay={playVideo}
+                    onAddToPlaylist={setAddingToPlaylist}
+                  />
                 ))}
               </div>
               {videos.length === 0 && !loading && (

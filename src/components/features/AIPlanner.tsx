@@ -1,30 +1,44 @@
 import { useState } from 'react';
-import { Sparkles, Loader2, Plus, Trash2 } from 'lucide-react';
-import { generateStudyPlan } from '../../lib/gemini';
+import { Sparkles, Loader2, Plus, Trash2, AlertCircle } from 'lucide-react';
+import { generateStudyPlan, isGeminiAvailable } from '../../lib/gemini';
 import { StudySession } from '../../types';
 import { motion } from 'motion/react';
 import { format12Hour } from '../../lib/dateUtils';
+import { clsx, type ClassValue } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+
+function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
 
 interface AIPlannerProps {
   sessions: StudySession[];
   setSessions: (sessions: StudySession[]) => void;
+  geminiApiKey?: string;
 }
 
-export default function AIPlanner({ sessions, setSessions }: AIPlannerProps) {
+export default function AIPlanner({ sessions, setSessions, geminiApiKey }: AIPlannerProps) {
   const [prompt, setPrompt] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ message: string, type: 'warning' | 'error' } | null>(null);
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
     setLoading(true);
     setError(null);
     try {
-      const data = await generateStudyPlan(prompt);
+      const data = await generateStudyPlan(prompt, geminiApiKey);
       setSessions(data.sessions);
       setPrompt("");
-    } catch (err) {
-      setError("Failed to generate plan. Please try again.");
+    } catch (err: any) {
+      if (err.message === "GEMINI_API_KEY_MISSING") {
+        setError({ 
+          message: "Gemini API Key is missing. Please check your environment or add one in Settings.", 
+          type: 'warning' 
+        });
+      } else {
+        setError({ message: "Failed to generate plan. Please try again.", type: 'error' });
+      }
     } finally {
       setLoading(false);
     }
@@ -39,13 +53,21 @@ export default function AIPlanner({ sessions, setSessions }: AIPlannerProps) {
         <p className="text-sm opacity-60 mt-1">Generate a personalized study schedule instantly.</p>
       </header>
 
+      {!isGeminiAvailable(geminiApiKey) && (
+        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-600 text-[11px] font-bold flex items-center gap-3">
+          <AlertCircle size={16} />
+          <span>GEMINI API KEY MISSING: some features may not work. Add a key in Settings.</span>
+        </div>
+      )}
+
       <div className="space-y-4">
         <div className="relative">
           <textarea 
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
+            disabled={loading}
             placeholder='e.g., "NEET Prep + 6 hours + night study mode + weekend focus"'
-            className="w-full h-32 rounded-3xl glass p-6 focus:outline-none focus:ring-2 ring-indigo-500 transition-all resize-none text-sm leading-relaxed"
+            className="w-full h-32 rounded-3xl glass-light border border-white/5 p-6 focus:outline-none focus:ring-2 ring-indigo-500 transition-all resize-none text-sm leading-relaxed gpu"
           />
           <button 
             onClick={handleGenerate}
@@ -57,8 +79,14 @@ export default function AIPlanner({ sessions, setSessions }: AIPlannerProps) {
         </div>
 
         {error && (
-          <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-500 text-sm text-center">
-            {error}
+          <div className={cn(
+            "p-6 rounded-3xl text-sm space-y-3",
+            error.type === 'warning' ? "bg-amber-500/10 border border-amber-500/20 text-amber-600" : "bg-red-500/10 border border-red-500/20 text-red-500"
+          )}>
+            <p className="font-bold flex items-center gap-2 uppercase tracking-widest text-[10px]">
+               {error.type === 'warning' ? '⚠️ Configuration Required' : '❌ AI Error'}
+            </p>
+            <p className="opacity-90">{error.message}</p>
           </div>
         )}
 
@@ -82,7 +110,7 @@ export default function AIPlanner({ sessions, setSessions }: AIPlannerProps) {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: idx * 0.05 }}
                 key={session.id} 
-                className="p-4 rounded-2xl glass flex justify-between items-center group"
+                className="p-4 rounded-2xl glass-light border border-white/5 flex justify-between items-center group gpu"
               >
                 <div className="flex items-center gap-4">
                   <div className="w-2 h-10 rounded-full" style={{ backgroundColor: session.color }} />

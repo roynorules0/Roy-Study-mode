@@ -38,7 +38,7 @@ export default function Timetable({ sessions }: TimetableProps) {
         {sessions.sort((a, b) => a.startTime.localeCompare(b.startTime)).map((session, idx) => (
           <div key={session.id} className="relative group">
             <div className="absolute -left-[29px] top-1.5 w-5 h-5 rounded-full bg-white border-4 border-indigo-500 shadow-lg shadow-indigo-500/20 z-10" />
-            <div className="p-5 rounded-3xl glass flex justify-between items-center group-hover:scale-[1.02] transition-transform cursor-grab active:cursor-grabbing">
+            <div className="p-5 rounded-3xl glass-light border border-white/5 flex justify-between items-center gpu active:scale-[0.98] transition-transform cursor-grab active:cursor-grabbing">
               <div className="flex items-center gap-4">
                 <div className="w-10 h-10 rounded-2xl flex items-center justify-center text-xs font-bold" style={{ backgroundColor: `${session.color}20`, color: session.color }}>
                   {session.type[0].toUpperCase()}

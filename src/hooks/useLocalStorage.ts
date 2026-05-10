@@ -4,7 +4,16 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
   const [storedValue, setStoredValue] = useState<T>(() => {
     try {
       const item = window.localStorage.getItem(key);
-      return item ? JSON.parse(item) : initialValue;
+      if (!item) return initialValue;
+      
+      const parsed = JSON.parse(item);
+      // Merge if it's a plain object to handle new keys added to initialValue
+      const isObject = (val: any) => typeof val === 'object' && val !== null && !Array.isArray(val);
+      
+      if (isObject(parsed) && isObject(initialValue)) {
+        return { ...initialValue, ...parsed };
+      }
+      return parsed;
     } catch (error) {
       console.error(error);
       return initialValue;
