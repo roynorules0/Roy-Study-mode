@@ -238,7 +238,7 @@ const NoteItem = memo(({ note, handleSummarize, deleteItem, summarizingId, summa
             </div>
             <p className="text-[11px] leading-relaxed opacity-80">{summaryData.summary}</p>
             <div className="space-y-1">
-              {summaryData.bulletPoints.map((bp: string, i: number) => (
+              {(summaryData.bulletPoints || []).map((bp: string, i: number) => (
                 <div key={i} className="flex gap-2 text-[10px] opacity-60">
                   <span className="text-indigo-500">•</span>
                   <span>{bp}</span>

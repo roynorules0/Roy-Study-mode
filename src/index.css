@@ -1,8 +1,12 @@
+@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;700&family=Gloria+Hallelujah&family=Indie+Flower&display=swap');
 @import "tailwindcss";
 
 @theme {
   --font-sans: "Outfit", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-hand: "Caveat", cursive;
+  --font-marker: "Gloria Hallelujah", cursive;
+  --font-pencil: "Indie Flower", cursive;
 
   --color-primary-50: #eef2ff;
   --color-primary-100: #e0e7ff;
@@ -33,9 +37,10 @@ body {
 
 .glass {
   background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(calc(12px * var(--glow-opacity, 1)));
+  -webkit-backdrop-filter: blur(calc(12px * var(--glow-opacity, 1)));
   border: 1px solid rgba(255, 255, 255, 0.1);
+  transition-duration: calc(0.3s * var(--anim-speed, 1)) !important;
 }
 
 .night .glass {
@@ -46,6 +51,43 @@ body {
 .day .glass {
   background: rgba(255, 255, 255, 0.5);
   border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.02);
+  backdrop-filter: blur(calc(16px * var(--glow-opacity, 1)));
+  -webkit-backdrop-filter: blur(calc(16px * var(--glow-opacity, 1)));
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  transition-duration: calc(0.3s * var(--anim-speed, 1)) !important;
+}
+
+/* Reduced Motion & Low Power Gates */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.glow-text {
+  text-shadow: 0 0 calc(20px * var(--glow-opacity, 1)) currentColor;
+}
+
+.glow-border {
+  box-shadow: 0 0 calc(15px * var(--glow-opacity, 1)) rgba(99, 102, 241, 0.2);
+}
+
+.tap-active:active {
+  transform: scale(0.96);
+  opacity: 0.8;
+}
+
+/* Smooth Scrolling Optimization */
+* {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
 }
 
 /* Scrollbar styling */
@@ -87,4 +129,29 @@ body {
 .tap-highlight-none {
   -webkit-tap-highlight-color: transparent;
 }
+
+.glass-modern {
+  background: rgba(10, 10, 10, 0.4);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 12px 48px -12px rgba(0, 0, 0, 0.5);
+}
+
+.bg-scanlines {
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.03) 50%,
+    transparent 50%
+  );
+  background-size: 100% 4px;
+}
+
+.no-complex-animations * {
+  transition: none !important;
+  animation: none !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
 

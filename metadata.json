@@ -1,8 +1,6 @@
 {
-  "name": "Remix: Roy Study App_Fixed",
-  "description": "A premium AI-powered study productivity app featuring smart planning, persistent focus timers, and deep analytics.",
-  "requestFramePermissions": [
-    "camera"
-  ],
-  "majorCapabilities": []
+  "name": "Roy Study AI",
+  "description": "A premium AI productivity platform for high-performance students. Includes deep focus tracking, AI revision master, and entrance exam simulations.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

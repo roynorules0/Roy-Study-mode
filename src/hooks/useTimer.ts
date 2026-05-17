@@ -108,5 +108,15 @@ export function useTimer(initialDuration: number) {
     setTimeLeft(durationInSeconds);
   }, []);
 
-  return { timeLeft, isActive: state.isActive, start, pause, resume, reset, state };
+  const syncTime = useCallback((newTimeLeft: number) => {
+    setTimeLeft(newTimeLeft);
+    setState(s => ({
+      ...s,
+      duration: newTimeLeft,
+      remainingAtLastPause: newTimeLeft,
+      startTime: s.isActive ? Date.now() : null
+    }));
+  }, []);
+
+  return { timeLeft, isActive: state.isActive, start, pause, resume, reset, syncTime, state };
 }

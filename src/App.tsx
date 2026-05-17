@@ -31,6 +31,7 @@ import {
   Brain,
   Sparkles,
   Target,
+  CheckCircle2,
   Monitor,
   RotateCcw
 } from 'lucide-react';
@@ -64,6 +65,7 @@ import StudyAvatarView from './components/features/StudyAvatar';
 import FocusRoom from './components/features/FocusRoom';
 import AIRevisionMaster from './components/features/AIRevisionMaster';
 import AIHub from './components/features/AIHub';
+import EliteModesHub from './components/features/EliteModesHub';
 import SmartStudyAnalyzer from './components/features/SmartStudyAnalyzer';
 import AIFocusShield from './components/features/AIFocusShield';
 import AIRevisionEngine from './components/features/AIRevisionEngine';
@@ -72,8 +74,8 @@ import AILifeBalancer from './components/features/AILifeBalancer';
 import AIStudyCompanion from './components/features/AIStudyCompanion';
 import CompanionFloatingWidget from './components/ui/CompanionFloatingWidget';
 import AIMemoryPalace from './components/features/AIMemoryPalace';
-import AIRealityMode from './components/features/AIRealityMode';
 import RealityFX from './components/ui/RealityFX';
+import SyncStatus from './components/ui/SyncStatus';
 import AISecondBrain from './components/features/AISecondBrain';
 import AITimeMachine from './components/features/AITimeMachine';
 import AIDisciplineEngine from './components/features/AIDisciplineEngine';
@@ -89,11 +91,23 @@ import AILiveLeaderboard from './components/features/AILiveLeaderboard';
 import AIStudyLock from './components/features/AIStudyLock';
 import AISmartWallpaper from './components/features/AISmartWallpaper';
 import BackgroundEngine from './components/BackgroundEngine';
+import AIDeepRevisionEngine from './components/features/AIDeepRevisionEngine';
+import AIPYQHunter from './components/features/AIPYQHunter';
+import AIVoiceCoach from './components/features/AIVoiceCoach';
+import AIMemoryRecallBattle from './components/features/AIMemoryRecallBattle';
+import AIStudyDNA from './components/features/AIStudyDNA';
+import AITimeFreeze from './components/features/AITimeFreeze';
+import AIMindPalace from './components/features/AIMindPalace';
+import AIBlackbox from './components/features/AIBlackbox';
+import AIDreamCity from './components/features/AIDreamCity';
+import AIMultiverseClassroom from './components/features/AIMultiverseClassroom';
+import AITitanProtocol from './components/features/AITitanProtocol';
 
 export default function App() {
   const { theme, toggleTheme } = useTheme();
   const { isAuthenticated, user, logout } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [eliteHubMode, setEliteHubMode] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isFocusRoomOpen, setIsFocusRoomOpen] = useState(false);
   const [showAchievement, setShowAchievement] = useState<{ title: string, text: string } | null>(null);
@@ -126,7 +140,13 @@ export default function App() {
     pomodoroWork: 25,
     pomodoroBreak: 5,
     uiScale: 100,
-    autoScale: false
+    autoScale: false,
+    glowIntensity: 100,
+    animationIntensity: 100,
+    isCompactMode: false,
+    isPerformanceMode: false,
+    isBatterySaver: false,
+    cameraSize: 'medium'
   });
 
   // Global Scale Sync
@@ -152,7 +172,7 @@ export default function App() {
     return () => window.removeEventListener('resize', handleResize);
   }, [preferences.uiScale, preferences.autoScale, setPreferences]);
   
-  const { timeLeft, isActive, start, pause, resume, reset } = useTimer(preferences.pomodoroWork * 60);
+  const { timeLeft, isActive, start, pause, resume, reset, syncTime } = useTimer(preferences.pomodoroWork * 60);
 
   const handleXPGain = useCallback((amount: number, reason: string) => {
     setUserStats(prev => {
@@ -303,6 +323,7 @@ export default function App() {
   return (
     <div className={cn("min-h-screen font-sans transition-colors duration-500 overflow-x-hidden relative", theme)}>
       <BackgroundEngine />
+      <SyncStatus />
       <AnimatePresence>
         {isSidebarOpen && (
           <>
@@ -508,123 +529,101 @@ export default function App() {
           </div>
         </header>
 
-        <main>
+        <main className="pb-12">
           {activeTab === 'dashboard' && (
-            <div className="space-y-5">
-              {/* AI Hub Quick Access */}
-              <button 
-                onClick={() => navigate('hub')}
-                className="w-full p-6 rounded-[2.5rem] bg-gradient-to-r from-indigo-600 to-purple-600 text-white flex items-center justify-between group shadow-xl shadow-indigo-600/20 overflow-hidden relative"
-              >
-                 <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-10" />
-                 <div className="relative z-10 flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center group-hover:scale-110 transition-transform shadow-lg">
-                       <BrainCircuit size={24} />
-                    </div>
-                    <div className="text-left">
-                       <div className="text-[8px] font-black uppercase tracking-[0.3em] opacity-60">Neural Gateway</div>
-                       <div className="text-xl font-black italic uppercase tracking-tighter">Enter AI Hub</div>
-                    </div>
-                 </div>
-                 <ChevronRight size={20} className="relative z-10 group-hover:translate-x-2 transition-transform opacity-40" />
-              </button>
-
-              {lastWatchedVideo && lastWatchedVideo.percent < 98 && (
-                <section className="space-y-3">
-                  <div className="flex justify-between items-center px-1">
-                    <h3 className="text-sm font-bold flex items-center gap-2"><Play className="text-red-500" size={14} /> Continue</h3>
-                    <span className="text-[8px] font-black opacity-30 uppercase tracking-widest">Smart Resume</span>
-                  </div>
-                  <button 
-                    onClick={() => navigate('youtube')}
-                    className="w-full relative group overflow-hidden rounded-[1.5rem] glass border border-white/5 p-3 flex gap-4 text-left hover:bg-white/[0.08] transition-all"
-                  >
-                     <div className="w-28 aspect-video rounded-xl overflow-hidden shrink-0 relative shadow-lg">
-                        <img src={lastWatchedVideo.thumbnail} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
-                        <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
-                          <div className="w-8 h-8 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center text-white">
-                             <Play size={14} fill="currentColor" />
-                          </div>
-                        </div>
-                        {lastWatchedVideo.percent > 0 && (
-                          <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/40">
-                            <motion.div 
-                              className="h-full bg-indigo-500" 
-                              initial={{ width: 0 }}
-                              animate={{ width: `${lastWatchedVideo.percent}%` }}
-                              transition={{ duration: 1, delay: 0.5 }}
-                            />
-                          </div>
-                        )}
-                     </div>
-                     <div className="flex flex-col justify-center py-0.5 flex-1 min-w-0">
-                        <h4 className="text-xs font-bold leading-tight line-clamp-1 mb-0.5 uppercase tracking-tight">{lastWatchedVideo.title}</h4>
-                        <p className="text-[9px] font-bold opacity-40 uppercase tracking-widest mb-2">{lastWatchedVideo.channelTitle}</p>
-                        <div className="flex items-center gap-2">
-                           <div className="text-[8px] font-black py-0.5 px-1.5 rounded bg-indigo-500/10 text-indigo-400 uppercase">
-                              {Math.floor(lastWatchedVideo.percent)}% Done
-                           </div>
-                        </div>
-                     </div>
-                  </button>
-                </section>
-              )}
-
-              <section className="p-5 rounded-[2rem] glass relative overflow-hidden group">
-                <div className="relative z-10 text-center">
-                   <div className="flex justify-between items-center mb-2 px-2">
-                      <span className="text-[10px] font-semibold uppercase tracking-widest opacity-40">Focus Session</span>
-                      <BrainCircuit size={14} className="text-indigo-500" />
+            <div className="space-y-6">
+              {/* Main Focus Control */}
+              <section className="p-10 rounded-[3.5rem] glass-card border border-white/5 relative overflow-hidden group bg-white/[0.01] shadow-2xl">
+                <div className="relative z-10 text-center space-y-6">
+                   <div className="flex justify-between items-center px-4">
+                      <div className="flex items-center gap-2">
+                        <div className={cn("w-2 h-2 rounded-full", isActive ? "bg-emerald-500 animate-pulse" : "bg-white/20")} />
+                        <span className="text-[9px] font-black uppercase tracking-[0.4em] opacity-40">System Core</span>
+                      </div>
+                      <span className="text-[9px] font-black uppercase tracking-widest opacity-20 italic">v9.2 PRO</span>
                    </div>
-                   <div className="text-5xl font-black tabular-nums tracking-tighter mb-4">
+                   
+                   <div className="text-[7rem] leading-none font-black tabular-nums tracking-tighter py-4 bg-clip-text text-transparent bg-gradient-to-b from-white to-white/20 drop-shadow-2xl">
                      {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, '0')}
                    </div>
-                   <div className="flex gap-3 px-2">
+
+                   <div className="flex gap-4 px-2">
                       {isActive ? (
-                        <button onClick={pause} className="flex-1 py-3 rounded-2xl bg-indigo-500 text-white font-black uppercase text-xs tracking-widest shadow-lg shadow-indigo-500/20">Pause</button>
+                        <button onClick={pause} className="flex-[2] py-6 rounded-[2rem] bg-white text-black font-black uppercase text-xs tracking-[0.2em] active:scale-95 transition-all">Pause</button>
                       ) : (
-                        <button onClick={() => start(1500)} className="flex-1 py-3 rounded-2xl bg-indigo-500 text-white font-black uppercase text-xs tracking-widest shadow-lg shadow-indigo-500/20">Start</button>
+                        <button onClick={() => start(preferences.pomodoroWork * 60)} className="flex-[2] py-6 rounded-[2rem] bg-indigo-600 text-white font-black uppercase text-xs tracking-[0.2em] shadow-xl shadow-indigo-600/30 active:scale-95 transition-all">Start Session</button>
                       )}
-                      <button onClick={() => reset(1500)} className="w-12 h-12 rounded-2xl glass flex items-center justify-center shrink-0">
-                        <Settings2 size={18} />
+                      <button onClick={() => reset(preferences.pomodoroWork * 60)} className="w-20 h-20 rounded-[2rem] glass border border-white/10 flex items-center justify-center shrink-0 active:scale-95 transition-all">
+                        <RotateCcw size={20} className="opacity-40" />
                       </button>
                    </div>
                 </div>
               </section>
 
+              {/* Quick Navigation / Missions */}
               <div className="grid grid-cols-2 gap-3">
-                <button onClick={() => navigate('planner')} className="p-4 rounded-3xl glass text-left space-y-2 group transition-all duration-300 hover:bg-white/[0.08]">
-                  <div className="w-8 h-8 rounded-xl bg-orange-500/20 flex items-center justify-center text-orange-500 group-hover:scale-110 transition-transform">
-                    <BrainCircuit size={16} />
-                  </div>
-                  <div className="font-bold text-sm tracking-tight italic uppercase">Planner</div>
-                </button>
-                <button onClick={() => navigate('timetable')} className="p-4 rounded-3xl glass text-left space-y-2 group transition-all duration-300 hover:bg-white/[0.08]">
-                  <div className="w-8 h-8 rounded-xl bg-blue-500/20 flex items-center justify-center text-blue-500 group-hover:scale-110 transition-transform">
-                    <Calendar size={16} />
-                  </div>
-                  <div className="font-bold text-sm tracking-tight italic uppercase">Schedule</div>
-                </button>
+                 <button 
+                  onClick={() => setActiveTab('missions')}
+                  className="p-6 rounded-[2.5rem] bg-indigo-500 text-white flex flex-col justify-between h-40 relative overflow-hidden group shadow-xl shadow-indigo-500/20"
+                 >
+                    <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:scale-110 transition-transform">
+                       <Zap size={64} fill="white" />
+                    </div>
+                    <div className="text-[7px] font-black uppercase tracking-[0.3em] opacity-60">Daily Directive</div>
+                    <div className="space-y-1">
+                       <div className="text-xl font-black italic uppercase tracking-tighter">Missions</div>
+                       <div className="flex items-center gap-1.5 opacity-60">
+                          <CheckCircle2 size={10} />
+                          <span className="text-[8px] font-black uppercase tracking-widest leading-none">Tap to track</span>
+                       </div>
+                    </div>
+                 </button>
+
+                 <button 
+                  onClick={() => setActiveTab('planner')}
+                  className="p-6 rounded-[2.5rem] glass-card border border-white/5 flex flex-col justify-between h-40 group hover:border-emerald-500/30 transition-all"
+                 >
+                    <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-400 mb-2">
+                       <Calendar size={20} />
+                    </div>
+                    <div className="space-y-1">
+                       <div className="text-sm font-black italic uppercase tracking-tighter">AI Planner</div>
+                       <div className="text-[7px] font-black opacity-30 uppercase tracking-[0.2em]">Neural Schedule</div>
+                    </div>
+                 </button>
               </div>
 
-              <section className="space-y-4">
-                <div className="flex justify-between items-center px-1">
-                  <h3 className="font-bold flex items-center gap-2"><ListTodo size={18} /> Today's Goals</h3>
-                  <button onClick={() => navigate('tasks')} className="text-xs font-semibold text-indigo-500">View All</button>
-                </div>
-                <div className="space-y-3">
-                   {tasks.slice(0, 3).map(task => (
-                     <div key={task.id} className="p-4 rounded-2xl glass flex items-center gap-3">
-                        <input type="checkbox" checked={task.completed} onChange={() => {}} className="w-5 h-5 rounded-lg accent-indigo-500" />
-                        <span className={cn(task.completed && "line-through opacity-50")}>{task.text}</span>
-                     </div>
-                   ))}
-                   {tasks.length === 0 && (
-                     <div className="p-8 text-center glass rounded-2xl opacity-50 text-sm">No tasks added yet.</div>
-                   )}
-                </div>
-              </section>
-              
+              {/* Quick Stats Grid */}
+              <div className="grid grid-cols-3 gap-3">
+                 {[
+                   { label: 'Neural XP', value: userStats.xp, color: 'text-indigo-400' },
+                   { label: 'Study Time', value: `${analytics[analytics.length-1]?.hours || 0}h`, color: 'text-emerald-400' },
+                   { label: 'Rank', value: `Lv.${userStats.level}`, color: 'text-amber-400' }
+                 ].map((stat, i) => (
+                   <div key={i} className="p-6 rounded-[2.5rem] glass-card border border-white/5 text-center space-y-1">
+                      <div className="text-[7px] font-black uppercase tracking-widest opacity-30">{stat.label}</div>
+                      <div className={cn("text-lg font-black italic tracking-tighter", stat.color)}>{stat.value}</div>
+                   </div>
+                 ))}
+              </div>
+
+              {/* Main Hub Entry (Large) */}
+              <button 
+                onClick={() => navigate('hub')}
+                className="w-full p-8 rounded-[3rem] bg-white/[0.02] border border-white/5 flex items-center justify-between group relative overflow-hidden active:scale-[0.98] transition-all"
+              >
+                  <div className="flex items-center gap-6">
+                    <div className="w-16 h-16 rounded-[1.5rem] bg-indigo-500 flex items-center justify-center text-white shadow-2xl shadow-indigo-500/20 group-hover:scale-105 transition-transform">
+                       <Brain size={32} />
+                    </div>
+                    <div className="text-left space-y-1">
+                       <h3 className="text-2xl font-black italic uppercase tracking-tighter text-white">System Hub</h3>
+                       <p className="text-[8px] font-black opacity-30 uppercase tracking-[0.3em]">Access All Neural Modules</p>
+                    </div>
+                  </div>
+                  <ChevronRight size={24} className="opacity-20 group-hover:translate-x-2 transition-transform" />
+              </button>
+
               <AudioPlayer />
             </div>
           )}
@@ -632,12 +631,48 @@ export default function App() {
           {activeTab === 'hub' && (
             <AIHub 
               userStats={userStats} 
+              isCompactMode={preferences.isCompactMode}
               onNavigate={(tab) => {
-                if (tab === 'focus-room') setIsFocusRoomOpen(true);
-                else navigate(tab);
-              }} 
+                if (tab.startsWith('elite_hub:')) {
+                  setEliteHubMode(tab.split(':')[1]);
+                  setActiveTab('elite_hub');
+                } else if (tab === 'focus-room') {
+                  setIsFocusRoomOpen(true);
+                } else {
+                  navigate(tab);
+                }
+              }}
             />
           )}
+
+          {activeTab === 'elite_hub' && (
+            <EliteModesHub 
+              initialMode={eliteHubMode || undefined}
+              userStats={userStats}
+              onExit={() => {
+                setEliteHubMode(null);
+                setActiveTab('hub');
+              }}
+            />
+          )}
+
+          {/* Performance & Glow Control Injection */}
+          <style>{`
+            :root {
+              --glow-opacity: ${preferences.isPerformanceMode ? 0.2 : preferences.glowIntensity / 100};
+              --anim-speed: ${preferences.isPerformanceMode ? 0.5 : 2 - (preferences.animationIntensity / 50)};
+            }
+            .glass-card {
+              box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3) !important;
+              backdrop-filter: blur(10px) !important;
+            }
+            .glow-effect {
+              filter: drop-shadow(0 0 calc(10px * var(--glow-opacity)) currentColor);
+            }
+            * {
+              transition-duration: calc(0.3s * var(--anim-speed)) !important;
+            }
+          `}</style>
 
           {activeTab === 'analyzer' && (
             <SmartStudyAnalyzer 
@@ -676,10 +711,6 @@ export default function App() {
 
           {activeTab === 'memory_palace' && (
             <AIMemoryPalace apiKey={preferences.geminiApiKey} />
-          )}
-
-          {activeTab === 'reality_mode' && (
-            <AIRealityMode />
           )}
 
           {activeTab === 'second_brain' && (
@@ -738,6 +769,38 @@ export default function App() {
             <AISmartWallpaper apiKey={preferences.geminiApiKey} />
           )}
 
+          {activeTab === 'deep_revision' && (
+            <AIDeepRevisionEngine />
+          )}
+
+          {activeTab === 'ai_pyq_hunter' && (
+            <AIPYQHunter />
+          )}
+          
+          {activeTab === 'ai_voice_coach' && (
+            <AIVoiceCoach />
+          )}
+
+          {activeTab === 'ai_memory_recall_battle' && (
+            <AIMemoryRecallBattle apiKey={preferences.geminiApiKey} />
+          )}
+
+          {activeTab === 'ai_study_dna' && (
+            <AIStudyDNA />
+          )}
+
+          {activeTab === 'ai_time_freeze' && (
+            <AITimeFreeze />
+          )}
+
+          {activeTab === 'ai_multiverse_classroom' && (
+            <AIMultiverseClassroom />
+          )}
+
+          {activeTab === 'ai_dream_city' && (
+            <AIDreamCity />
+          )}
+
           {activeTab === 'shield' && (
             <AIFocusShield 
               onScoreUpdate={(score) => {
@@ -789,12 +852,27 @@ export default function App() {
               timeLeft={timeLeft} 
               onResume={resume}
               onPause={pause}
+              syncTime={syncTime}
               timerActive={isActive}
               onLectureStart={() => {
                 updateDailyAnalytics({ lecturesWatched: 1, focusScore: 5 });
                 handleXPGain(5, "Learning Started");
                 setShowAchievement({ title: "Lecture Started!", text: "Learning is power. +5 XP earned." });
                 setTimeout(() => setShowAchievement(null), 3000);
+              }}
+              onMetricsUpdate={(metrics) => {
+                if (metrics.sessionComplete) {
+                  updateDailyAnalytics({ 
+                    lecturesWatched: metrics.lecturesWatched || 1, 
+                    focusScore: metrics.focusScore || 20,
+                    sessions: 1
+                  });
+                  if (metrics.focusScore) handleXPGain(metrics.focusScore, "Lecture Completed");
+                  setShowAchievement({ title: "Mission Accomplished!", text: "Lecture finished. Session rewards issued. 🔥" });
+                  setTimeout(() => setShowAchievement(null), 5000);
+                } else {
+                  updateDailyAnalytics(metrics);
+                }
               }}
             />
           )}

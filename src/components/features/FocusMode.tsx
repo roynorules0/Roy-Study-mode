@@ -36,7 +36,7 @@ export default function FocusMode({ timeLeft, isActive, onPause, onResume, onRes
            <span className="text-sm font-semibold tracking-wider uppercase">Focus Session</span>
         </div>
 
-        <div className="text-[8rem] sm:text-[12rem] font-black tracking-tighter leading-none tabular-nums">
+        <div className="text-[clamp(5rem,25vw,12rem)] font-black tracking-tighter leading-none tabular-nums">
            {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, '0')}
         </div>
 

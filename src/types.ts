@@ -170,6 +170,12 @@ export interface UserPreferences {
   endTime?: string;
   uiScale: number;
   autoScale: boolean;
+  glowIntensity: number;
+  animationIntensity: number;
+  isCompactMode: boolean;
+  isPerformanceMode: boolean;
+  isBatterySaver: boolean;
+  cameraSize: 'small' | 'medium' | 'large';
 }
 
 export interface StudyAnalysis {

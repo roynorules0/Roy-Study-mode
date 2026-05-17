@@ -17,8 +17,10 @@ interface YouTubeStudyProps {
   timeLeft: number;
   onResume: () => void;
   onPause: () => void;
+  syncTime: (time: number) => void;
   timerActive: boolean;
   onLectureStart?: () => void;
+  onMetricsUpdate?: (metrics: any) => void;
 }
 
 const VideoCard = memo(({ 
@@ -70,7 +72,7 @@ const VideoCard = memo(({
   </motion.div>
 ));
 
-export default function YouTubeStudy({ apiKey, timeLeft, onResume, onPause, timerActive, onLectureStart }: YouTubeStudyProps) {
+export default function YouTubeStudy({ apiKey, timeLeft, onResume, onPause, syncTime, timerActive, onLectureStart, onMetricsUpdate }: YouTubeStudyProps) {
   const [query, setQuery] = useState("");
   const [videos, setVideos] = useState<YouTubeVideo[]>([]);
   const [loading, setLoading] = useState(false);
@@ -196,8 +198,10 @@ export default function YouTubeStudy({ apiKey, timeLeft, onResume, onPause, time
         timeLeft={timeLeft} 
         onResume={onResume}
         onPause={onPause}
+        syncTime={syncTime}
         timerActive={timerActive}
         onBack={() => setSelectedVideo(null)} 
+        onMetricsUpdate={onMetricsUpdate}
       />
     );
   }

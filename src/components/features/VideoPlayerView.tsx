@@ -30,6 +30,20 @@ import {
   ChevronRight as ChevronRightIcon,
   Volume2,
   VolumeX,
+  Music,
+  Monitor,
+  Layout,
+  BookMarked,
+  List,
+  EyeOff,
+  Sparkles,
+  MousePointer2,
+  Lock,
+  Unlock,
+  AppWindow,
+  Info,
+  Layers,
+  Move,
 } from 'lucide-react';
 import { YouTubeVideo, VideoNote, WatchHistory, PlayerPerformanceSettings } from '../../types';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
@@ -41,6 +55,7 @@ interface VideoPlayerViewProps {
   timeLeft: number;
   onResume: () => void;
   onPause: () => void;
+  syncTime: (time: number) => void;
   timerActive: boolean;
   onBack: () => void;
   onMetricsUpdate?: (metrics: any) => void;
@@ -77,11 +92,54 @@ const formatTime = (seconds: number) => {
   return `${m}:${String(s).padStart(2, '0')}`;
 };
 
-export default function VideoPlayerView({ video, timeLeft, onResume, onPause, timerActive, onBack, onMetricsUpdate }: VideoPlayerViewProps) {
+interface AmbientAudio {
+  id: string;
+  name: string;
+  url: string;
+}
+
+const AMBIENT_SOUNDS: AmbientAudio[] = [
+  { id: 'rain', name: 'Rain', url: 'https://www.soundjay.com/nature/rain-01.mp3' },
+  { id: 'cafe', name: 'Cafe', url: 'https://www.soundjay.com/ambient/cafe-ambience-1.mp3' },
+  { id: 'storm', name: 'Storm', url: 'https://www.soundjay.com/nature/thunder-01.mp3' }
+];
+
+interface FloatingWidgetConfig {
+  x: number | string;
+  y: number | string;
+  size: 'small' | 'compact' | 'expanded';
+  opacity: number;
+  isMinimized: boolean;
+}
+
+export default function VideoPlayerView({ video, timeLeft, onResume, onPause, syncTime, timerActive, onBack, onMetricsUpdate }: VideoPlayerViewProps) {
   const [isFocused, setIsFocused] = useState(true);
+  const [isCinemaMode, setIsCinemaMode] = useState(false);
+  const [isLockedIn, setIsLockedIn] = useState(false);
+  const [isMiniPlayer, setIsMiniPlayer] = useState(false);
   const [showFocusCam, setShowFocusCam] = useState(true);
+  const [showAmbientMixer, setShowAmbientMixer] = useState(false);
+  const [showChapters, setShowChapters] = useState(false);
+  const [showMoments, setShowMoments] = useState(false);
+  const [showPerfSettings, setShowPerfSettings] = useState(false);
+  const [activeAmbiance, setActiveAmbiance] = useState<string | null>(null);
+  const [ambianceVolume, setAmbianceVolume] = useState(50);
   const [noteText, setNoteText] = useState("");
   const [notes, setNotes] = useLocalStorage<VideoNote[]>(`video-notes-${video.id}`, []);
+  const [currentSessionStart] = useState(Date.now());
+  
+  const [widgetConfig, setWidgetConfig] = useLocalStorage<FloatingWidgetConfig>('focus-widget-config', {
+    x: 'calc(100% - 180px)',
+    y: 100,
+    size: 'compact',
+    opacity: 100,
+    isMinimized: false
+  });
+  const [focusStats, setFocusStats] = useState({
+    sessionLength: 0,
+    pauseCount: 0,
+    streak: 1
+  });
   const [videoHistory, setVideoHistory] = useLocalStorage<Record<string, WatchHistory>>('study-video-progress', {});
   const [showResumePrompt, setShowResumePrompt] = useState(false);
   const [savedProgress, setSavedProgress] = useState<WatchHistory | null>(null);
@@ -100,6 +158,10 @@ export default function VideoPlayerView({ video, timeLeft, onResume, onPause, ti
   const [brightness, setBrightness] = useState(100);
   const [swipeIndicator, setSwipeIndicator] = useState<{ type: 'volume' | 'brightness', value: number, visible: boolean }>({ type: 'volume', value: 100, visible: false });
   
+  const [audioProfile, setAudioProfile] = useState<'standard' | 'bass' | 'vocal' | 'boost'>('standard');
+  const [hoverTime, setHoverTime] = useState<number | null>(null);
+  const [hoverX, setHoverX] = useState(0);
+  
   // Performance states
   const [perfSettings, setPerfSettings] = useLocalStorage<PlayerPerformanceSettings>('yt-perf-settings', {
     autoQuality: true,
@@ -110,27 +172,76 @@ export default function VideoPlayerView({ video, timeLeft, onResume, onPause, ti
   });
   const [isBuffering, setIsBuffering] = useState(false);
   const [bufferCount, setBufferCount] = useState(0);
-  const [showPerfSettings, setShowPerfSettings] = useState(false);
 
   const playerRef = useRef<any>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const ambianceAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    if (activeAmbiance) {
+      const sound = AMBIENT_SOUNDS.find(s => s.id === activeAmbiance);
+      if (sound) {
+        if (ambianceAudioRef.current) ambianceAudioRef.current.pause();
+        ambianceAudioRef.current = new Audio(sound.url);
+        ambianceAudioRef.current.loop = true;
+        ambianceAudioRef.current.volume = ambianceVolume / 100;
+        ambianceAudioRef.current.play().catch(e => console.warn("Ambience play blocked", e));
+      }
+    } else {
+      ambianceAudioRef.current?.pause();
+    }
+    return () => ambianceAudioRef.current?.pause();
+  }, [activeAmbiance]);
+
+  useEffect(() => {
+    if (ambianceAudioRef.current) {
+      ambianceAudioRef.current.volume = ambianceVolume / 100;
+    }
+  }, [ambianceVolume]);
+  // Optimization: Direct DOM refs for high-frequency updates
   const progressBarRef = useRef<HTMLDivElement>(null);
+  const currentTimeRef = useRef<HTMLDivElement>(null);
+  const durationRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const saveIntervalRef = useRef<any>(null);
   const controlsTimeoutRef = useRef<any>(null);
   const lastFocusRef = useRef(true);
   const bufferTimerRef = useRef<any>(null);
 
-  // Sync progress bar via direct DOM manipulation for performance
+  const wakeControls = useCallback(() => {
+    setShowControls(true);
+    if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+  }, []);
   useEffect(() => {
+    let lastSecond = -1;
     const updateProgress = () => {
       if (playerRef.current && 
           typeof playerRef.current.getCurrentTime === 'function' && 
           typeof playerRef.current.getDuration === 'function') {
         const current = playerRef.current.getCurrentTime();
         const total = playerRef.current.getDuration();
+        const currentInt = Math.floor(current);
+        const rate = playerRef.current.getPlaybackRate?.() || 1;
         
-        setCurrentTime(current);
-        setDuration(total);
+        // Only update state once per second to reduce re-renders
+        if (currentInt !== lastSecond) {
+          setCurrentTime(current);
+          setDuration(total);
+          lastSecond = currentInt;
+          
+          if (currentTimeRef.current) {
+            currentTimeRef.current.innerText = formatTime(current);
+          }
+          if (durationRef.current) {
+            durationRef.current.innerText = formatTime(total);
+          }
+
+          // INTELLIGENT SYNC: Update global focus timer
+          // Real-world seconds remaining = (Total Video Seconds - Current Video Seconds) / Playback Rate
+          const remainingRealTime = Math.ceil((total - current) / rate);
+          if (remainingRealTime >= 0) {
+            syncTime(remainingRealTime);
+          }
+        }
 
         if (total > 0 && progressBarRef.current) {
           const percent = (current / total) * 100;
@@ -207,100 +318,98 @@ export default function VideoPlayerView({ video, timeLeft, onResume, onPause, ti
       
       // Destroy existing player if any to prevent memory leaks
       if (playerRef.current && playerRef.current.destroy) {
-        playerRef.current.destroy();
+        try {
+          playerRef.current.destroy();
+        } catch (e) {
+          console.warn("Player destroy failed", e);
+        }
       }
 
-      playerRef.current = new window.YT.Player('yt-player-embed', {
+      const playerOptions = {
         videoId: video.id,
         playerVars: {
           autoplay: 1,
           modestbranding: 1,
           rel: 0,
           iv_load_policy: 3,
-          controls: 0, // CUSTOM CONTROLS UI
+          controls: 0,
           origin: window.location.origin,
           disablekb: 1,
           fs: 0,
           hl: 'en',
-          // Performance optimizations
           widget_referrer: window.location.href,
-          enablejsapi: 1
+          enablejsapi: 1,
+          cc_load_policy: 0,
+          playsinline: 1
         },
         events: {
           onReady: (event: any) => {
             const player = event.target;
-            console.log("YouTube Player Ready", { videoId: video.id });
+            playerRef.current = player;
             
-            // Apply data saver quality if enabled
-            if (perfSettings.dataSaver) {
-              player.setPlaybackQuality('small'); // 240p
-            } else if (perfSettings.autoQuality) {
-              player.setPlaybackQuality('auto');
+            if (perfSettings.dataSaver) player.setPlaybackQuality('small');
+            else if (perfSettings.autoQuality) player.setPlaybackQuality('auto');
+
+            // Handle immediate play if not showing resume prompt
+            if (!showResumePrompt) {
+              player.playVideo();
             }
 
-            player.playVideo();
+            // Sync initial duration if available
+            const total = player.getDuration();
+            if (total > 0) {
+              setDuration(total);
+              syncTime(Math.ceil(total / (player.getPlaybackRate() || 1)));
+            }
             
             saveIntervalRef.current = setInterval(() => {
-              if (playerRef.current && 
-                  typeof playerRef.current.getCurrentTime === 'function' && 
-                  typeof playerRef.current.getDuration === 'function') {
+              if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function') {
                 const current = playerRef.current.getCurrentTime();
                 const total = playerRef.current.getDuration();
                 if (total > 0) {
-                  setVideoHistory(prev => ({
+                  setVideoHistory((prev: Record<string, WatchHistory>) => ({
                     ...prev,
                     [video.id]: {
                       videoId: video.id,
                       lastTimestamp: current,
                       totalDurationAtLastSave: total,
-                      playbackRate: typeof playerRef.current.getPlaybackRate === 'function' 
-                        ? playerRef.current.getPlaybackRate() 
-                        : 1,
+                      playbackRate: playerRef.current.getPlaybackRate?.() || 1,
                       updatedAt: Date.now()
                     }
                   }));
                 }
               }
-            }, 5000);
+            }, 3000); // More frequent saves for premium feel
           },
           onStateChange: (event: any) => {
-            console.log("YouTube Player State Change:", event.data);
             if (event.data === window.YT.PlayerState.PLAYING) {
-              console.log("Playback Started");
               setIsPlaying(true);
               setIsBuffering(false);
               clearTimeout(bufferTimerRef.current);
             } else if (event.data === window.YT.PlayerState.PAUSED) {
-              console.log("Playback Paused");
               setIsPlaying(false);
             } else if (event.data === window.YT.PlayerState.BUFFERING) {
-              console.log("Playback Buffering...");
               setIsBuffering(true);
               setBufferCount(prev => prev + 1);
-              
-              // If buffering for too long, suggest quality reduction
               bufferTimerRef.current = setTimeout(() => {
-                if (perfSettings.autoQuality && !perfSettings.dataSaver) {
-                   console.log("Low connection detected, dropping quality");
-                   playerRef.current?.setPlaybackQuality('medium'); // Drop to 360p if stuck
-                }
-              }, 5000);
+                if (perfSettings.autoQuality) playerRef.current?.setPlaybackQuality('medium');
+              }, 4000);
             } else if (event.data === window.YT.PlayerState.ENDED) {
-              console.log("Playback Ended");
               setIsPlaying(false);
-            } else {
-              setIsPlaying(false);
-            }
-          },
-          onError: (event: any) => {
-            console.error("YouTube Player Error:", event.data);
-            // Attempt to reload video if it fails
-            if (event.data === 150 || event.data === 101) {
-              // Video doesn't allow embedding or other fatal error
+              // AUTO SESSION COMPLETE
+              if (onMetricsUpdate) {
+                onMetricsUpdate({ 
+                  lecturesWatched: 1, 
+                  sessionComplete: true,
+                  focusScore: 50 
+                });
+              }
             }
           }
         }
-      });
+      };
+
+      playerRef.current = new window.YT.Player('yt-player-embed', playerOptions);
     };
 
     if (window.YT && window.YT.Player) {
@@ -448,7 +557,15 @@ export default function VideoPlayerView({ video, timeLeft, onResume, onPause, ti
     (e.currentTarget as any)._touchStartY = touch.clientY;
     (e.currentTarget as any)._touchStartX = touch.clientX;
     (e.currentTarget as any)._isSwiping = false;
-  }, []);
+    
+    // Setup long press for speed
+    const timer = setTimeout(() => {
+      if (!(e.currentTarget as any)._isSwiping) {
+        handleLongPressStart();
+      }
+    }, 500);
+    (e.currentTarget as any)._longPressTimer = timer;
+  }, [handleLongPressStart, wakeControls]);
 
   const handleInteractionLayerTouchMove = useCallback((e: React.TouchEvent) => {
     const touch = e.touches[0];
@@ -457,8 +574,12 @@ export default function VideoPlayerView({ video, timeLeft, onResume, onPause, ti
     const deltaY = startY - touch.clientY;
     const deltaX = startX - touch.clientX;
 
-    if (Math.abs(deltaY) > 20 && Math.abs(deltaY) > Math.abs(deltaX)) {
+    if (Math.abs(deltaY) > 20 || Math.abs(deltaX) > 20) {
       (e.currentTarget as any)._isSwiping = true;
+      clearTimeout((e.currentTarget as any)._longPressTimer);
+    }
+
+    if (Math.abs(deltaY) > 20 && Math.abs(deltaY) > Math.abs(deltaX)) {
       const rect = e.currentTarget.getBoundingClientRect();
       const isLeft = touch.clientX < rect.left + rect.width / 2;
       const change = (deltaY / rect.height) * 100;
@@ -472,6 +593,29 @@ export default function VideoPlayerView({ video, timeLeft, onResume, onPause, ti
     }
   }, [brightness, volume, handleBrightnessChange, handleVolumeChange]);
 
+  const handleInteractionLayerTouchEnd = useCallback((e: React.TouchEvent) => {
+    clearTimeout((e.currentTarget as any)._longPressTimer);
+    if (isLongPressing) {
+      handleLongPressEnd();
+    } else {
+      const now = Date.now();
+      const lastTap = (e.currentTarget as any)._lastTap || 0;
+      const tapDuration = now - lastTap;
+      
+      if (tapDuration < 300 && tapDuration > 0) {
+        // Double tap
+        const touch = e.changedTouches[0];
+        const rect = e.currentTarget.getBoundingClientRect();
+        const isLeft = touch.clientX < rect.left + rect.width / 2;
+        handleDoubleTap(isLeft ? 'left' : 'right');
+        (e.currentTarget as any)._lastTap = 0; // Reset
+      } else {
+        (e.currentTarget as any)._lastTap = now;
+        wakeControls();
+      }
+    }
+  }, [isLongPressing, handleLongPressEnd, handleDoubleTap, wakeControls]);
+
   const cycleRate = useCallback(() => {
     if (!playerRef.current) return;
     const rates = [1, 1.25, 1.5, 2];
@@ -481,80 +625,46 @@ export default function VideoPlayerView({ video, timeLeft, onResume, onPause, ti
     playerRef.current.setPlaybackRate(nextRate);
   }, [playbackRate]);
 
-  const wakeControls = useCallback(() => {
-    setShowControls(true);
-    if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
-  }, []);
-
-  // Auto hide controls
+  // Auto hide controls faster on Android/Performance
   useEffect(() => {
     if (isPlaying && showControls) {
-      controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 3000);
+      const delay = perfSettings.performanceMode ? 1500 : 2500;
+      controlsTimeoutRef.current = setTimeout(() => setShowControls(false), delay);
     }
     return () => clearTimeout(controlsTimeoutRef.current);
-  }, [isPlaying, showControls]);
+  }, [isPlaying, showControls, perfSettings.performanceMode]);
 
-  // Interaction Layer - Simplified and made non-blocking
+  // Interaction Layer - Pure non-blocking gestural system
   const InteractionLayer = useMemo(() => (
     <div 
-      className="absolute inset-0 z-10 pointer-events-none flex"
+      className="absolute inset-0 z-10 pointer-events-auto cursor-none"
       onMouseMove={wakeControls}
-    >
-       {/* Transparent zones for double tap - using pointer-events-auto carefully */}
-       <div 
-         className="h-full flex-1 pointer-events-auto cursor-pointer"
-         onMouseDown={(e) => {
-           const timer = setTimeout(handleLongPressStart, 500);
-           (e.currentTarget as any)._longPressTimer = timer;
-         }}
-         onMouseUp={(e) => {
-           clearTimeout((e.currentTarget as any)._longPressTimer);
-           if (isLongPressing) handleLongPressEnd();
-           else if (e.detail === 2) handleDoubleTap('left');
-           else wakeControls();
-         }}
-         onMouseLeave={(e) => {
-           clearTimeout((e.currentTarget as any)._longPressTimer);
-           if (isLongPressing) handleLongPressEnd();
-         }}
-         onTouchStart={(e) => {
-           const timer = setTimeout(handleLongPressStart, 500);
-           (e.currentTarget as any)._longPressTimer = timer;
-           wakeControls();
-         }}
-         onTouchEnd={(e) => {
-           clearTimeout((e.currentTarget as any)._longPressTimer);
-           if (isLongPressing) handleLongPressEnd();
-         }}
-       />
-       <div 
-         className="h-full flex-1 pointer-events-auto cursor-pointer"
-         onMouseDown={(e) => {
-           const timer = setTimeout(handleLongPressStart, 500);
-           (e.currentTarget as any)._longPressTimer = timer;
-         }}
-         onMouseUp={(e) => {
-           clearTimeout((e.currentTarget as any)._longPressTimer);
-           if (isLongPressing) handleLongPressEnd();
-           else if (e.detail === 2) handleDoubleTap('right');
-           else wakeControls();
-         }}
-         onMouseLeave={(e) => {
-           clearTimeout((e.currentTarget as any)._longPressTimer);
-           if (isLongPressing) handleLongPressEnd();
-         }}
-         onTouchStart={(e) => {
-           const timer = setTimeout(handleLongPressStart, 500);
-           (e.currentTarget as any)._longPressTimer = timer;
-           wakeControls();
-         }}
-         onTouchEnd={(e) => {
-           clearTimeout((e.currentTarget as any)._longPressTimer);
-           if (isLongPressing) handleLongPressEnd();
-         }}
-       />
-    </div>
-  ), [handleDoubleTap, wakeControls]); 
+      onTouchStart={handleInteractionLayerTouchStart}
+      onTouchMove={handleInteractionLayerTouchMove}
+      onTouchEnd={handleInteractionLayerTouchEnd}
+      onMouseDown={(e) => {
+        const timer = setTimeout(handleLongPressStart, 400);
+        (e.currentTarget as any)._longPressTimer = timer;
+      }}
+      onMouseUp={(e) => {
+        clearTimeout((e.currentTarget as any)._longPressTimer);
+        if (isLongPressing) handleLongPressEnd();
+        else {
+          const rect = e.currentTarget.getBoundingClientRect();
+          const isLeft = e.clientX < rect.left + rect.width / 2;
+          if (e.detail === 2) {
+            handleDoubleTap(isLeft ? 'left' : 'right');
+          } else {
+            wakeControls();
+          }
+        }
+      }}
+      onMouseLeave={() => {
+        clearTimeout((InteractionLayer as any)._longPressTimer);
+        if (isLongPressing) handleLongPressEnd();
+      }}
+    />
+  ), [handleDoubleTap, wakeControls, handleInteractionLayerTouchStart, handleInteractionLayerTouchMove, handleInteractionLayerTouchEnd, handleLongPressStart, handleLongPressEnd, isLongPressing]); 
 
   return (
     <motion.div 
@@ -562,9 +672,131 @@ export default function VideoPlayerView({ video, timeLeft, onResume, onPause, ti
       animate={{ opacity: 1 }}
       className={cn(
         "fixed inset-0 z-[100] flex flex-col bg-black text-white overflow-hidden gpu",
-        perfSettings.performanceMode && "no-complex-animations"
+        perfSettings.performanceMode && "no-blur no-animations"
       )}
+      style={{
+        // Strict performance overrides
+        '--backdrop-blur': perfSettings.performanceMode ? '0px' : '12px',
+        '--glow-opacity': perfSettings.performanceMode || !isCinemaMode ? '0' : '0.2'
+      } as any}
     >
+      {/* Global Performance Overrides */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        .no-blur * { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+        .no-animations * { transition: none !important; animation: none !important; }
+        .glass { background: rgba(0,0,0,0.8) !important; border: 1px solid rgba(255,255,255,0.05) !important; }
+        .glass-modern { background: rgba(10,10,10,0.95) !important; border: 1px solid rgba(255,255,255,0.05) !important; }
+      `}} />
+      {/* Floating Smart Focus Widget */}
+      <AnimatePresence>
+        {isFocused && (
+          <motion.div 
+            drag
+            dragMomentum={false}
+            dragElastic={0.1}
+            onDragEnd={(e, info) => {
+              // Snap to edges logic
+              const x = info.point.x;
+              const y = info.point.y;
+              const windowWidth = window.innerWidth;
+              const windowHeight = window.innerHeight;
+              
+              // Calculate nearest horizontal edge
+              let finalX = x;
+              const threshold = 100; // Snap threshold
+              if (x < threshold) finalX = 20;
+              else if (x > windowWidth - threshold - 160) finalX = windowWidth - 180;
+              
+              setWidgetConfig(prev => ({ ...prev, x: finalX, y }));
+            }}
+            initial={false}
+            animate={{ 
+              x: typeof widgetConfig.x === 'string' ? 0 : widgetConfig.x, 
+              y: typeof widgetConfig.y === 'string' ? 0 : widgetConfig.y,
+              opacity: isPlaying ? widgetConfig.opacity / 100 * 0.7 : widgetConfig.opacity / 100,
+              scale: isPlaying ? 0.95 : 1
+            }}
+            style={{
+              position: 'fixed',
+              top: typeof widgetConfig.y === 'string' ? widgetConfig.y : 0,
+              left: typeof widgetConfig.x === 'string' ? widgetConfig.x : 0,
+              zIndex: 200,
+              touchAction: 'none'
+            }}
+            className={cn(
+              "group/widget flex flex-col items-center gap-2 p-2 rounded-[2rem] border border-white/5 shadow-2xl transition-all duration-500",
+              widgetConfig.size === 'small' ? "w-24" : "w-40",
+              widgetConfig.isMinimized ? "h-12 bg-black/40" : "bg-black/80 backdrop-blur-md"
+            )}
+          >
+             {/* Drag Handle & Toggle */}
+             <div className="flex items-center justify-between w-full px-2 opacity-0 group-hover/widget:opacity-100 transition-opacity">
+                <div className="cursor-grab active:cursor-grabbing p-1 opacity-40">
+                   <Move size={10} />
+                </div>
+                <button 
+                  onClick={() => setWidgetConfig(prev => ({ ...prev, isMinimized: !prev.isMinimized }))}
+                  className="p-1 hover:bg-white/10 rounded-full transition-colors"
+                >
+                  {widgetConfig.isMinimized ? <Plus size={10} /> : <Minimize size={10} />}
+                </button>
+             </div>
+
+             {!widgetConfig.isMinimized && (
+               <div className="flex flex-col items-center text-center p-2 pt-0 w-full">
+                  <div className={cn(
+                    "text-indigo-400 font-black tabular-nums transition-all",
+                    widgetConfig.size === 'small' ? "text-base" : (timeLeft > 3600 ? "text-xl" : "text-3xl")
+                  )}>
+                    {formatTime(timeLeft)}
+                  </div>
+                  
+                  {widgetConfig.size !== 'small' && (
+                    <div className="text-[7px] font-black uppercase tracking-[0.3em] opacity-30 mt-1">Focus Loop</div>
+                  )}
+
+                  {/* Expanded Controls */}
+                  <div className="h-0 group-hover/widget:h-auto overflow-hidden opacity-0 group-hover/widget:opacity-100 transition-all space-y-2 mt-4 w-full">
+                     <div className="grid grid-cols-2 gap-1">
+                        <button 
+                          onClick={() => setWidgetConfig(prev => ({ ...prev, size: prev.size === 'small' ? 'compact' : 'small' }))}
+                          className="p-1.5 bg-white/5 rounded-lg flex items-center justify-center"
+                        >
+                           <Maximize size={10} />
+                        </button>
+                        <button 
+                          onClick={() => setWidgetConfig(prev => ({ ...prev, opacity: prev.opacity === 30 ? 100 : 30 }))}
+                          className="p-1.5 bg-white/5 rounded-lg flex items-center justify-center"
+                        >
+                           <Layers size={10} />
+                        </button>
+                     </div>
+                     <div className="w-full h-px bg-white/5" />
+                     <div className="flex justify-between items-center px-1">
+                        <span className="text-[6px] font-black uppercase tracking-widest opacity-30">Opacity</span>
+                        <input 
+                          type="range" 
+                          min="30" 
+                          max="100" 
+                          step="10"
+                          value={widgetConfig.opacity}
+                          onChange={(e) => setWidgetConfig(prev => ({ ...prev, opacity: parseInt(e.target.value) }))}
+                          className="w-12 h-0.5 bg-white/10 rounded-full appearance-none accent-indigo-500"
+                        />
+                     </div>
+                  </div>
+               </div>
+             )}
+
+             {widgetConfig.isMinimized && (
+                <div className="text-[10px] font-black tabular-nums text-indigo-400">
+                  {formatTime(timeLeft)}
+                </div>
+             )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <AnimatePresence>
         {showResumePrompt && (
           <motion.div 
@@ -602,48 +834,206 @@ export default function VideoPlayerView({ video, timeLeft, onResume, onPause, ti
         )}
       </AnimatePresence>
 
+      <AnimatePresence>
+        {!perfSettings.performanceMode && isCinemaMode && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="absolute inset-0 pointer-events-none z-0 overflow-hidden"
+          >
+            <motion.div 
+              animate={{
+                scale: [1, 1.1, 1],
+                opacity: [0.1, 0.2, 0.1],
+                background: [
+                  'radial-gradient(circle at 50% 50%, rgba(79, 70, 229, 0.15) 0%, transparent 70%)',
+                  'radial-gradient(circle at 50% 50%, rgba(99, 102, 241, 0.2) 0%, transparent 70%)',
+                  'radial-gradient(circle at 50% 50%, rgba(79, 70, 229, 0.15) 0%, transparent 70%)'
+                ]
+              }}
+              transition={{ duration: 10, repeat: Infinity, ease: "linear" }}
+              className="w-[200%] h-[200%] absolute top-[-50%] left-[-50%] blur-[120px]"
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {isLockedIn && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed top-6 left-1/2 -translate-x-1/2 z-[150] flex items-center gap-3 px-6 py-3 glass-modern rounded-full border border-indigo-500/20 shadow-2xl"
+          >
+            <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+            <span className="text-[10px] font-black uppercase tracking-[0.3em]">Locked In • Mission Active</span>
+            <button 
+              onClick={() => setIsLockedIn(false)}
+              className="ml-4 p-1 rounded-full hover:bg-white/10 transition-colors"
+            >
+              <Unlock size={14} className="opacity-40" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Header */}
-      <div className="flex items-center justify-between p-4 bg-gradient-to-b from-black/90 to-transparent z-20">
-        <button onClick={onBack} className="p-3 rounded-full hover:bg-white/10 transition-colors">
-          <ArrowLeft size={24} />
+      <div className={cn(
+        "flex items-center justify-between p-4 px-6 bg-gradient-to-b from-black/95 via-black/20 to-transparent z-[30] transition-all duration-500 ease-in-out",
+        (isCinemaMode || isLockedIn) && "opacity-0 pointer-events-none -translate-y-4"
+      )}>
+        <button onClick={onBack} className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-all active:scale-95 shadow-lg border border-white/5">
+          <ChevronLeft size={20} />
         </button>
-        <div className="text-center px-4 overflow-hidden">
-           <div className="flex items-center justify-center gap-2 mb-0.5">
-              <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-              <h4 className="text-[8px] font-bold uppercase tracking-widest opacity-40">Live Focus Session</h4>
+        <div className="flex flex-col items-center max-w-[50%]">
+           <h4 className="text-[10px] font-black italic uppercase tracking-tighter truncate w-full text-center">{video.title}</h4>
+           <div className="flex items-center gap-2 opacity-30">
+              <div className="w-1 h-1 rounded-full bg-indigo-500" />
+              <span className="text-[7px] font-black uppercase tracking-widest">{video.channelTitle} • Cinematic Engine</span>
            </div>
-           <h4 className="text-xs font-black italic uppercase tracking-tighter truncate max-w-[200px] sm:max-w-md">{video.title}</h4>
         </div>
         <div className="flex gap-2">
           <button 
-             onClick={() => setShowPerfSettings(!showPerfSettings)}
-             className={cn("p-3 rounded-xl transition-all glass", showPerfSettings && "bg-amber-500/20 text-amber-500 border-amber-500/30")}
+             onClick={() => setShowChapters(!showChapters)}
+             className={cn("p-2.5 rounded-xl transition-all glass-modern border border-white/5", showChapters && "bg-indigo-500/20 text-indigo-400 border-indigo-500/30")}
+             title="Chapters"
           >
-             <Gauge size={20} />
+             <List size={18} />
+          </button>
+          <button 
+             onClick={() => setShowMoments(!showMoments)}
+             className={cn("p-2.5 rounded-xl transition-all glass-modern border border-white/5", showMoments && "bg-indigo-500/20 text-indigo-400 border-indigo-500/30")}
+             title="Study Moments"
+          >
+             <BookMarked size={18} />
+          </button>
+          <button 
+             onClick={() => setShowPerfSettings(!showPerfSettings)}
+             className={cn("p-2.5 rounded-xl transition-all glass-modern border border-white/5", showPerfSettings && "bg-amber-500/20 text-amber-500 border-amber-500/30")}
+             title="Performance"
+          >
+             <Gauge size={18} />
+          </button>
+          <button 
+             onClick={() => setIsMiniPlayer(!isMiniPlayer)}
+             className={cn("p-2.5 rounded-xl transition-all glass-modern border border-white/5", isMiniPlayer && "bg-indigo-500/20 text-indigo-400 border-indigo-500/30")}
+             title="Mini Player"
+          >
+             <AppWindow size={18} />
+          </button>
+          <button 
+             onClick={() => setShowAmbientMixer(!showAmbientMixer)}
+             className={cn("p-2.5 rounded-xl transition-all glass-modern border border-white/5", activeAmbiance && "bg-indigo-500/20 text-indigo-400 border-indigo-500/30")}
+          >
+             <Volume2 size={18} />
+          </button>
+          <button 
+             onClick={() => setIsCinemaMode(!isCinemaMode)}
+             className={cn("p-2.5 rounded-xl transition-all glass-modern border border-white/5", isCinemaMode && "bg-amber-500/20 text-amber-500 border-amber-500/30")}
+          >
+             <Monitor size={18} />
+          </button>
+          <button 
+             onClick={() => setIsLockedIn(!isLockedIn)}
+             className={cn("p-2.5 rounded-xl transition-all glass-modern border border-white/5", isLockedIn && "bg-rose-500/20 text-rose-400 border-rose-500/30")}
+          >
+             <Lock size={18} />
           </button>
           <button 
              onClick={() => setShowFocusCam(!showFocusCam)} 
-             className={`p-3 rounded-xl transition-all ${showFocusCam ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' : 'glass opacity-50'}`}
+             className={cn("p-2.5 rounded-xl transition-all", showFocusCam ? 'bg-indigo-500 text-white shadow-lg border border-indigo-400' : 'glass-modern opacity-50 border border-white/5')}
           >
-            <Camera size={20} />
-          </button>
-          <button 
-             onClick={() => setIsFocused(!isFocused)} 
-             className={`p-3 rounded-xl transition-all ${isFocused ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/30' : 'glass opacity-50'}`}
-          >
-            <Flame size={20} />
+            <Camera size={18} />
           </button>
         </div>
       </div>
 
-      {/* Performance Settings Dropdown */}
+      {/* Ambient Audio Mixer */}
+      <AnimatePresence>
+        {showAmbientMixer && (
+          <motion.div 
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="absolute top-20 right-4 w-64 glass-modern rounded-[2rem] p-6 z-[120] border border-white/10 space-y-4 shadow-2xl"
+          >
+             <div className="flex items-center justify-between mb-2">
+                <Music size={16} className="text-indigo-400" />
+                <h3 className="text-[10px] font-black uppercase tracking-[0.2em]">Atmosphere Sync</h3>
+             </div>
+             
+             <div className="grid grid-cols-3 gap-2">
+               {AMBIENT_SOUNDS.map(sound => (
+                 <button 
+                    key={sound.id}
+                    onClick={() => setActiveAmbiance(activeAmbiance === sound.id ? null : sound.id)}
+                    className={cn(
+                      "p-3 rounded-xl border transition-all text-[9px] font-black uppercase tracking-tighter",
+                      activeAmbiance === sound.id ? "bg-indigo-500 text-white border-indigo-400" : "bg-white/5 border-white/5 opacity-40"
+                    )}
+                 >
+                   {sound.name}
+                 </button>
+               ))}
+             </div>
+
+             {activeAmbiance && (
+               <div className="space-y-2 pt-2 border-t border-white/5">
+                 <div className="flex justify-between text-[8px] font-black uppercase opacity-40">
+                   <span>Ambient Gain</span>
+                   <span>{ambianceVolume}%</span>
+                 </div>
+                 <input 
+                   type="range" 
+                   min="0" 
+                   max="100" 
+                   value={ambianceVolume}
+                   onChange={(e) => setAmbianceVolume(parseInt(e.target.value))}
+                   className="w-full h-1 bg-white/10 rounded-full appearance-none accent-indigo-500"
+                 />
+               </div>
+             )}
+
+             {/* Audio Profiles */}
+             <div className="space-y-3 pt-4 border-t border-white/5">
+                <div className="flex items-center gap-2 mb-2">
+                  <Zap size={14} className="text-amber-400" />
+                  <span className="text-[10px] font-black uppercase tracking-widest">Studiosonic Link</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { id: 'standard', label: 'Standard' },
+                    { id: 'bass', label: 'Deep Bass' },
+                    { id: 'vocal', label: 'Clear Vocal' },
+                    { id: 'boost', label: 'Voice Boost' }
+                  ].map(profile => (
+                    <button 
+                      key={profile.id}
+                      onClick={() => setAudioProfile(profile.id as any)}
+                      className={cn(
+                        "py-2 px-3 rounded-xl border text-[9px] font-black uppercase tracking-tighter transition-all",
+                        audioProfile === profile.id ? "bg-amber-500 text-black border-amber-400 font-black" : "bg-white/5 border-white/5 opacity-40 hover:opacity-100"
+                      )}
+                    >
+                      {profile.label}
+                    </button>
+                  ))}
+                </div>
+             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Removed Focus Sync HUD (Giant Floating Timer) as requested */}
+
       <AnimatePresence>
         {showPerfSettings && (
           <motion.div 
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="absolute top-20 right-4 w-64 glass rounded-[2rem] p-6 z-[120] border border-white/10 space-y-4 shadow-2xl"
+            className="absolute top-24 right-24 w-64 glass-modern rounded-[2rem] p-6 z-[120] border border-white/10 space-y-4 shadow-2xl"
           >
              <div className="flex items-center gap-3 mb-2">
                 <Settings2 size={16} className="text-amber-400" />
@@ -659,7 +1049,7 @@ export default function VideoPlayerView({ video, timeLeft, onResume, onPause, ti
              ].map(item => (
                 <button 
                   key={item.id}
-                  onClick={() => setPerfSettings({ ...perfSettings, [item.id]: !perfSettings[item.id as keyof PlayerPerformanceSettings] })}
+                  onClick={() => setPerfSettings({ ...perfSettings, [item.id as keyof PlayerPerformanceSettings]: !perfSettings[item.id as keyof PlayerPerformanceSettings] })}
                   className="w-full flex items-center justify-between group"
                 >
                    <div className="flex items-center gap-3">
@@ -678,6 +1068,105 @@ export default function VideoPlayerView({ video, timeLeft, onResume, onPause, ti
         )}
       </AnimatePresence>
 
+      {/* Performance Optimized Overlay System */}
+      <AnimatePresence>
+        {showChapters && !perfSettings.performanceMode && (
+          <motion.div 
+            initial={{ x: -300, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: -300, opacity: 0 }}
+            className="absolute top-20 left-4 bottom-28 w-72 bg-zinc-950/90 rounded-[2rem] p-6 z-[100] border border-white/5 shadow-2xl overflow-y-auto"
+          >
+             <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center gap-3">
+                   <List size={20} className="text-indigo-400" />
+                   <h3 className="text-sm font-black italic uppercase tracking-widest">Chapters</h3>
+                </div>
+                <button onClick={() => setShowChapters(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+                   <X size={18} />
+                </button>
+             </div>
+             
+             <div className="space-y-3">
+                {[
+                  { time: 0, label: "Introduction" },
+                  { time: duration * 0.2, label: "Core Concepts" },
+                  { time: duration * 0.5, label: "Detailed Analysis" },
+                  { time: duration * 0.8, label: "Summary & Review" }
+                ].map((chapter, i) => (
+                  <button 
+                    key={i}
+                    onClick={() => seekTo(chapter.time)}
+                    className="w-full p-4 rounded-2xl bg-white/5 border border-white/5 hover:bg-indigo-500/20 hover:border-indigo-500/30 transition-all flex items-center justify-between group"
+                  >
+                    <div className="flex items-center gap-4">
+                       <span className="text-[10px] font-black text-indigo-400 group-hover:scale-110 transition-transform">{formatTime(chapter.time)}</span>
+                       <span className="text-xs font-bold opacity-80">{chapter.label}</span>
+                    </div>
+                    {currentTime >= chapter.time && (currentTime < (i < 3 ? (duration * (i === 0 ? 0.2 : i === 1 ? 0.5 : 0.8)) : duration)) && (
+                      <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
+                    )}
+                  </button>
+                ))}
+             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Study Moments/Bookmarks Overlay */}
+      <AnimatePresence>
+        {showMoments && !perfSettings.performanceMode && (
+          <motion.div 
+            initial={{ x: 300, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: 300, opacity: 0 }}
+            className="absolute top-20 right-4 bottom-28 w-72 bg-zinc-950/90 rounded-[2rem] p-6 z-[100] border border-white/5 shadow-2xl overflow-y-auto"
+          >
+             <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center gap-3">
+                   <BookMarked size={20} className="text-amber-400" />
+                   <h3 className="text-sm font-black italic uppercase tracking-widest">Bookmarks</h3>
+                </div>
+                <button onClick={() => setShowMoments(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+                   <X size={18} />
+                </button>
+             </div>
+
+             <div className="space-y-4">
+                <div className="relative">
+                   <input 
+                     value={noteText}
+                     onChange={(e) => setNoteText(e.target.value)}
+                     onKeyDown={(e) => e.key === 'Enter' && addNote()}
+                     className="w-full h-12 bg-white/5 rounded-xl border border-white/10 px-4 text-[10px] font-bold outline-none focus:border-indigo-500 transition-all placeholder:opacity-40"
+                     placeholder="New study moment..."
+                   />
+                   <button onClick={addNote} className="absolute right-2 top-2 bottom-2 w-8 bg-indigo-500 rounded-lg flex items-center justify-center">
+                     <Plus size={16} />
+                   </button>
+                </div>
+
+                <div className="space-y-2">
+                   {notes.map(note => (
+                     <button 
+                       key={note.id}
+                       onClick={() => seekTo(note.timestamp)}
+                       className="w-full p-4 rounded-2xl bg-white/5 border border-white/5 hover:bg-indigo-500/10 transition-all text-left"
+                     >
+                        <div className="flex items-center gap-3 mb-1">
+                           <span className="text-[10px] font-black text-indigo-400">{note.timeLabel}</span>
+                           <div className="w-1 h-1 rounded-full bg-white/20" />
+                           <span className="text-[8px] font-black uppercase tracking-widest text-amber-400">Moment Saved</span>
+                        </div>
+                        <p className="text-[11px] font-medium opacity-70 italic truncate">"{note.text}"</p>
+                     </button>
+                   ))}
+                </div>
+             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <AnimatePresence>
         {showFocusCam && (
           <FocusCam 
@@ -690,10 +1179,14 @@ export default function VideoPlayerView({ video, timeLeft, onResume, onPause, ti
 
       {/* Main Player Area */}
       <div className="flex-1 relative flex flex-col items-center justify-center p-2 sm:p-12 overflow-hidden bg-zinc-950">
-        <div 
+        <motion.div 
+          layout
+          drag={isMiniPlayer}
+          dragConstraints={containerRef}
           className={cn(
-            "relative w-full max-w-5xl aspect-video rounded-3xl overflow-hidden glass shadow-2xl border border-white/5 bg-black transition-transform duration-500",
-            isFocused ? "scale-100 sm:scale-105" : "scale-100"
+            "relative rounded-3xl overflow-hidden glass shadow-2xl border border-white/5 bg-black transition-all duration-500 ease-in-out",
+            isMiniPlayer ? "fixed bottom-8 left-8 w-80 aspect-video z-[180] shadow-[0_32px_128px_rgba(0,0,0,0.8)] border-indigo-500/30" : "w-full max-w-5xl aspect-video",
+            isFocused && !isMiniPlayer && "scale-100 sm:scale-105"
           )}
           onMouseEnter={wakeControls}
           onMouseLeave={() => isPlaying && setShowControls(false)}
@@ -783,78 +1276,107 @@ export default function VideoPlayerView({ video, timeLeft, onResume, onPause, ti
             )}
           </AnimatePresence>
 
-          {/* CUSTOM CONTROLS OVERLAY */}
+          {/* PREMIUM CUSTOM CONTROLS HUD */}
           <AnimatePresence>
             {showControls && (
               <motion.div 
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="absolute inset-0 z-20 flex flex-col justify-end p-4 sm:p-8 bg-gradient-to-t from-black/80 via-transparent to-black/20 pointer-events-none"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 10 }}
+                className="absolute inset-x-0 bottom-0 z-20 p-6 sm:p-10 pointer-events-none"
               >
-                {/* Seek Bar Area */}
-                <div 
-                  className="w-full h-1.5 bg-white/10 rounded-full mb-6 cursor-pointer pointer-events-auto relative group/seek"
-                  onClick={handleManualSeek}
-                >
+                {/* Floating Control Island */}
+                <div className="max-w-2xl mx-auto glass rounded-[2.5rem] p-4 sm:p-6 border border-white/10 shadow-2xl pointer-events-auto flex flex-col gap-4">
+                  {/* Progress Bar - Thinner for performance visibility */}
                   <div 
-                    ref={progressBarRef}
-                    className="h-full bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.8)] transition-[width] duration-100 rounded-full"
-                    style={{ width: '0%' }}
-                  />
-                  <div className="absolute -top-1 right-0 opacity-0 group-hover/seek:opacity-100 transition-opacity">
-                     <div className="w-3.5 h-3.5 bg-white rounded-full shadow-lg" />
+                    className="group/seek relative w-full h-1 bg-white/10 rounded-full cursor-pointer transition-all hover:h-1.5"
+                    onClick={handleManualSeek}
+                    onMouseMove={(e) => {
+                       const rect = e.currentTarget.getBoundingClientRect();
+                       const x = e.clientX - rect.left;
+                       const time = (x / rect.width) * duration;
+                       setHoverTime(time);
+                       setHoverX(x);
+                    }}
+                    onMouseLeave={() => setHoverTime(null)}
+                  >
+                    {/* Hover Time Bubble */}
+                    <AnimatePresence>
+                      {hoverTime !== null && (
+                        <motion.div 
+                          initial={{ opacity: 0, y: -10, scale: 0.8 }}
+                          animate={{ opacity: 1, y: -40, scale: 1 }}
+                          exit={{ opacity: 0, y: -10, scale: 0.8 }}
+                          className="absolute glass-modern px-3 py-1.5 rounded-full border border-white/20 text-[10px] font-black shadow-2xl pointer-events-none"
+                          style={{ left: hoverX, transform: 'translateX(-50%)' }}
+                        >
+                           {formatTime(hoverTime)}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    <div className="absolute inset-0 bg-white/5 opacity-0 group-hover/seek:opacity-100 transition-opacity" />
+                    <div 
+                      ref={progressBarRef}
+                      className="h-full bg-indigo-500 shadow-[0_0_20px_rgba(99,102,241,1)] relative transition-[width] duration-100 rounded-full"
+                      style={{ width: '0%' }}
+                    >
+                       <div className="absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full shadow-2xl scale-0 group-hover/seek:scale-100 transition-transform border-4 border-indigo-500" />
+                    </div>
                   </div>
-                </div>
 
-                {/* Bottom Controls */}
-                <div className="flex items-center justify-between pointer-events-auto">
-                   <div className="flex items-center gap-4 sm:gap-6">
-                      <button 
-                         onClick={togglePlay} 
-                         className="w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-all hover:scale-110 active:scale-95"
-                      >
-                         {isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" className="ml-1" />}
-                      </button>
-                      
-                      <div className="flex items-center gap-2">
-                         <button onClick={toggleMute} className="text-white opacity-60 hover:opacity-100 transition-opacity">
-                            {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
-                         </button>
-                         <div className="text-xs font-black tabular-nums tracking-wider opacity-90">
-                           <span className="text-white">{formatTime(currentTime)}</span>
-                           <span className="text-white/40 mx-1.5">/</span>
-                           <span className="text-white/60">{formatTime(duration)}</span>
-                         </div>
-                      </div>
-                   </div>
+                  {/* Main HUD Row */}
+                  <div className="flex items-center justify-between">
+                     <div className="flex items-center gap-5">
+                        <button 
+                           onClick={togglePlay} 
+                           className="w-12 h-12 rounded-2xl bg-white/5 hover:bg-white/10 flex items-center justify-center text-white transition-all active:scale-95 shadow-lg border border-white/5"
+                        >
+                           {isPlaying ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" className="ml-0.5" />}
+                        </button>
+                        
+                        <div className="flex flex-col">
+                           <div className="text-[10px] font-black tabular-nums tracking-widest text-indigo-400">
+                             <span ref={currentTimeRef}>{formatTime(currentTime)}</span> <span className="opacity-30 mx-1">/</span> <span ref={durationRef}>{formatTime(duration)}</span>
+                           </div>
+                           <div className="text-[8px] font-bold uppercase tracking-[0.2em] opacity-30">Synapse Progress</div>
+                        </div>
+                     </div>
 
-                   <div className="flex items-center gap-2 sm:gap-4">
-                      <button 
-                        onClick={() => setShowJumpModal(true)}
-                        className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white transition-colors flex items-center gap-2 group"
-                      >
-                        <JumpIcon size={18} className="text-indigo-400 group-hover:rotate-12 transition-transform" />
-                        <span className="hidden sm:inline text-[10px] font-black uppercase tracking-widest">Jump</span>
-                      </button>
+                     <div className="flex items-center gap-3">
+                        <button 
+                          onClick={() => setShowJumpModal(true)}
+                          className="w-10 h-10 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center text-white/60 hover:text-white transition-all group"
+                        >
+                          <JumpIcon size={16} className="group-hover:rotate-12 transition-transform" />
+                        </button>
 
-                      <button 
-                        onClick={cycleRate}
-                        className="w-14 h-10 rounded-xl bg-white/5 hover:bg-white/10 text-white flex items-center justify-center text-[10px] font-black transition-colors"
-                      >
-                         {playbackRate}x
-                      </button>
+                        <button 
+                          onClick={toggleMute}
+                          className="w-10 h-10 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center text-white/60 hover:text-white transition-all"
+                        >
+                           {isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
+                        </button>
 
-                      <button className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white transition-colors">
-                        <Maximize size={18} />
-                      </button>
-                   </div>
+                        <div className="h-6 w-px bg-white/10 mx-1" />
+
+                        <button 
+                          onClick={cycleRate}
+                          className="px-4 h-10 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 text-[10px] font-black transition-all border border-indigo-500/20 uppercase tracking-widest"
+                        >
+                           {playbackRate}x
+                        </button>
+
+                        <button className="w-10 h-10 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center text-white/60 hover:text-white transition-all">
+                          <Maximize size={16} />
+                        </button>
+                     </div>
+                  </div>
                 </div>
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
-
+        
         {/* Precision Jump Modal */}
         <AnimatePresence>
           {showJumpModal && (
@@ -905,31 +1427,7 @@ export default function VideoPlayerView({ video, timeLeft, onResume, onPause, ti
           )}
         </AnimatePresence>
 
-        {/* Lightweight Focus Feedback */}
-        <AnimatePresence>
-          {isFocused && (
-            <motion.div 
-              initial={{ x: 50, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              exit={{ x: 50, opacity: 0 }}
-              className="absolute top-6 right-6 p-5 rounded-[2rem] glass backdrop-blur-2xl shadow-3xl z-50 flex items-center gap-5 border border-white/10"
-            >
-               <div className="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center shadow-2xl shadow-indigo-600/30">
-                  <Clock size={24} />
-               </div>
-               <div className="pr-5">
-                  <div className="text-[9px] font-black opacity-30 uppercase tracking-[0.2em] mb-1">Temporal Lock</div>
-                  <FocusTimer timeLeft={timeLeft} />
-               </div>
-               <div className="pl-5 border-l border-white/10">
-                  <div className="text-[9px] font-black opacity-30 uppercase tracking-[0.2em] mb-1">Lecture End</div>
-                  <div className="text-xl font-black tabular-nums leading-none text-indigo-400">
-                     {formatTime(duration - currentTime)}
-                  </div>
-               </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+      {/* Lightweight Focus Feedback - REMOVED for Floating Widget */}
         
         {/* Buffering warning */}
         {bufferCount > 2 && isBuffering && (
@@ -937,6 +1435,7 @@ export default function VideoPlayerView({ video, timeLeft, onResume, onPause, ti
              <AlertTriangle size={14} /> Network Lag Detected - Auto-Optimizing Quality
           </div>
         )}
+        </motion.div>
       </div>
 
       <AnimatePresence>

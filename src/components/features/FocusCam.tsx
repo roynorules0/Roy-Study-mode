@@ -12,7 +12,9 @@ import {
   Ghost,
   Move,
   ChevronDown,
-  Scaling
+  Scaling,
+  Zap,
+  AlertCircle
 } from 'lucide-react';
 import Human from '@vladmandic/human';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
@@ -44,6 +46,7 @@ export interface CamLayout {
 
 const HUMAN_CONFIG = {
   modelBasePath: 'https://cdn.jsdelivr.net/npm/@vladmandic/human/models',
+  backend: 'webgl', // Force WebGL for stability in iframe environments
   face: {
     enabled: true,
     detector: { rotation: true, maxDetected: 1 },
@@ -106,8 +109,21 @@ export default memo(function FocusCam({ onFocusChange, onMetricsUpdate }: FocusC
     const human = new Human(HUMAN_CONFIG as any);
     humanRef.current = human;
 
+    const initAndDetect = async () => {
+      try {
+        // Explicitly set backend and wait for it
+        if (human.tf) {
+          await human.tf.setBackend('webgl');
+          await human.tf.ready();
+        }
+      } catch (e) {
+        console.warn("Failed to set WebGL backend, falling back:", e);
+      }
+      detect();
+    };
+
     const detect = async () => {
-      if (isCancelled || !isActive || !videoElementRef.current || !humanRef.current || !videoElementRef.current.srcObject) {
+      if (isCancelled || !isActive || !videoElementRef.current || !humanRef.current || !videoElementRef.current.srcObject || videoElementRef.current.readyState < 2) {
          if (!isCancelled && isActive) requestAnimationFrame(detect);
          return;
       }
@@ -171,7 +187,7 @@ export default memo(function FocusCam({ onFocusChange, onMetricsUpdate }: FocusC
     };
 
     if (isActive) {
-      detect();
+      initAndDetect();
     }
 
     return () => {
@@ -316,15 +332,15 @@ export default memo(function FocusCam({ onFocusChange, onMetricsUpdate }: FocusC
         scale: isMinimized ? 0.8 : 1
       }}
       className={cn(
-        "fixed z-[999999] group pointer-events-none cursor-move",
+        "fixed z-[200] group pointer-events-none cursor-move",
         !layout.x && !layout.y && "bottom-24 right-6"
       )}
       onDoubleClick={() => setIsMinimized(!isMinimized)}
     >
       <div className={cn(
-        "relative w-full h-full glass border border-white/20 overflow-hidden shadow-2xl backdrop-blur-3xl bg-black pointer-events-auto transition-all duration-300",
+        "relative w-full h-full glass-modern border border-white/10 overflow-hidden shadow-[0_0_40px_rgba(0,0,0,0.5)] bg-black pointer-events-auto transition-all duration-500 ease-out",
         shapes[layout.shape],
-        isMinimized && "rounded-full aspect-square"
+        isMinimized && "rounded-full aspect-square ring-2 ring-indigo-500/50 ring-offset-4 ring-offset-black"
       )}>
         <AnimatePresence mode="wait">
           {!isActive ? (
@@ -333,21 +349,35 @@ export default memo(function FocusCam({ onFocusChange, onMetricsUpdate }: FocusC
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center space-y-3"
+              className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center space-y-4"
             >
-              <div className="w-10 h-10 rounded-2xl bg-white/5 flex items-center justify-center text-indigo-400">
-                <Camera size={20} />
+              <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center text-indigo-400 shadow-inner">
+                <Camera size={24} />
               </div>
               {!isMinimized && layout.width > 120 && (
                 <>
-                  <div className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-40">Ready to Study</div>
+                  <div className="text-[9px] font-black uppercase tracking-[0.3em] opacity-30">Neural Vision</div>
                   <button 
                     onClick={startCamera}
-                    className="px-4 py-2 rounded-xl bg-indigo-500 text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-transform"
+                    className={cn(
+                      "px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-xl",
+                      error 
+                        ? "bg-rose-500 hover:bg-rose-600 shadow-rose-500/20" 
+                        : "bg-indigo-500 hover:scale-105 active:scale-95 shadow-indigo-500/20"
+                    )}
                   >
-                    Enable
+                    {error ? "Retry Access" : "Activate Link"}
                   </button>
-                  {error && <p className="text-[8px] text-rose-500 font-bold uppercase">{error}</p>}
+                  {error && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="flex items-center gap-1 text-rose-500"
+                    >
+                      <AlertCircle size={10} />
+                      <p className="text-[7px] font-bold uppercase tracking-wider">{error}</p>
+                    </motion.div>
+                  )}
                 </>
               )}
             </motion.div>
@@ -367,19 +397,54 @@ export default memo(function FocusCam({ onFocusChange, onMetricsUpdate }: FocusC
                 className="w-full h-full object-cover pointer-events-none"
                 style={{ 
                   transform: 'scaleX(-1)',
-                  WebkitTransform: 'scaleX(-1)'
+                  WebkitTransform: 'scaleX(-1)',
+                  filter: `brightness(${1.1}) contrast(1.1)`
                 }}
               />
+              {/* Scanline FX */}
+              <div className="absolute inset-0 bg-scanlines opacity-[0.03] pointer-events-none" />
+              
               {!stream && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black">
-                  <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black">
+                  <Zap className="text-indigo-500 animate-pulse" size={20} />
+                  <div className="text-[8px] font-black uppercase tracking-widest opacity-40">Syncing...</div>
                 </div>
               )}
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* Controls Overlay */}
+         {/* Dynamic Status Indicator */}
+        {isActive && !isMinimized && (
+          <div className="absolute bottom-3 left-3 right-3 flex flex-col gap-2 z-20">
+             {/* Energy Bar */}
+             <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden backdrop-blur-md">
+                <motion.div 
+                  initial={{ width: '100%' }}
+                  animate={{ width: `${metrics.attentionScore}%` }}
+                  className={cn(
+                    "h-full transition-all duration-700",
+                    metrics.attentionScore > 70 ? "bg-indigo-500 shadow-[0_0_8px_#6366f1]" : 
+                    metrics.attentionScore > 30 ? "bg-amber-500 shadow-[0_0_8px_#f59e0b]" : 
+                    "bg-rose-500 shadow-[0_0_8px_#f43f5e]"
+                  )}
+                />
+             </div>
+             
+             <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/60 backdrop-blur-md border border-white/5">
+                   <div className={cn("w-1.5 h-1.5 rounded-full", metrics.isLookingAway ? "bg-rose-500" : "bg-emerald-500 animate-pulse")} />
+                   <span className="text-[8px] font-black uppercase tracking-widest opacity-80">
+                     {metrics.isLookingAway ? "Distracted" : "Locked In"}
+                   </span>
+                </div>
+                <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-white/5 backdrop-blur-sm border border-white/5">
+                   <Zap size={10} className="text-amber-400" />
+                   <span className="text-[8px] font-black">{Math.round(metrics.attentionScore)}%</span>
+                </div>
+             </div>
+          </div>
+        )}
         <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-20">
           <button 
              onClick={() => setShowSettings(!showSettings)}

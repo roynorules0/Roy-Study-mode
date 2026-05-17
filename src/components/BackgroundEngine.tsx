@@ -15,6 +15,11 @@ export default function BackgroundEngine() {
     lastUpdate: Date.now()
   });
 
+  const [globalPrefs] = useLocalStorage<any>('user-preferences', {});
+  const glowLimit = (globalPrefs?.glowIntensity ?? 100) / 100;
+  const animLimit = (globalPrefs?.animationIntensity ?? 100) / 100;
+  const isBatterySaverGlobal = globalPrefs?.isBatterySaver ?? false;
+
   const [isReduced, setIsReduced] = useState(false);
 
   useEffect(() => {
@@ -32,11 +37,15 @@ export default function BackgroundEngine() {
     return () => observer.disconnect();
   }, []);
 
-  const { currentTheme, intensity, speed, isBatterySaver } = state;
+  const { currentTheme, speed, intensity: wallpaperIntensity } = state;
+  const isBatterySaver = state.isBatterySaver || isBatterySaverGlobal;
 
   const renderBackground = () => {
-    // Optimization: Return static background if battery saver or performance mode is active
-    if (isBatterySaver || isReduced) return <div className="fixed inset-0 bg-[#050505] -z-50 transition-colors duration-1000" />;
+    // Optimization: Return static background if battery saver, performance mode, or very low glow is set
+    if (isBatterySaver || isReduced || glowLimit < 0.05) return <div className="fixed inset-0 bg-[#050505] -z-50" />;
+
+    const effectiveIntensity = (wallpaperIntensity / 100) * glowLimit;
+    const effectiveSpeed = (speed / 50) * animLimit;
 
     switch (currentTheme) {
       case 'Cyber Grind':
@@ -44,38 +53,39 @@ export default function BackgroundEngine() {
           <div className="fixed inset-0 -z-50 overflow-hidden bg-black pointer-events-none transition-all">
             {/* Grid */}
             <div 
-              className="absolute inset-0 opacity-10" 
+              className="absolute inset-0 opacity-[0.08]" 
               style={{
                 backgroundImage: `linear-gradient(to right, #4f46e5 1px, transparent 1px), linear-gradient(to bottom, #4f46e5 1px, transparent 1px)`,
                 backgroundSize: '40px 40px',
                 transform: `perspective(1000px) rotateX(60deg) translateY(${speed/2}px)`,
-                animation: `gridMove ${15 / (speed / 50)}s linear infinite`
+                animation: effectiveSpeed > 0.1 ? `gridMove ${15 / effectiveSpeed}s linear infinite` : 'none'
               }}
             />
             {/* Neon Pulses */}
             <motion.div 
-              animate={{ 
-                opacity: [0.05, 0.15, 0.05],
-                scale: [1, 1.1, 1]
-              }}
-              transition={{ duration: 8, repeat: Infinity }}
+              animate={effectiveSpeed > 0.1 ? { 
+                opacity: [0.03 * effectiveIntensity, 0.12 * effectiveIntensity, 0.03 * effectiveIntensity],
+                scale: [1, 1.05, 1]
+              } : { opacity: 0.08 * effectiveIntensity }}
+              transition={{ duration: 10 / effectiveSpeed, repeat: Infinity }}
               className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-indigo-600/10 blur-[150px] rounded-full"
             />
           </div>
         );
       
       case 'Rain Study':
+        const rainCount = Math.floor(25 * animLimit);
         return (
           <div className="fixed inset-0 -z-50 overflow-hidden bg-[#020617] pointer-events-none">
              {/* Rain drops - Optimized count for performance */}
-             <div className="absolute inset-0 opacity-10">
-                {Array.from({ length: 25 }).map((_, i) => (
+             <div className="absolute inset-0 opacity-[0.08]">
+                {effectiveSpeed > 0.1 && Array.from({ length: rainCount }).map((_, i) => (
                    <motion.div 
                      key={i}
                      initial={{ y: -100, x: `${Math.random() * 100}%` }}
                      animate={{ y: '120vh' }}
                      transition={{ 
-                        duration: Math.random() * 1.5 + 1, 
+                        duration: (Math.random() * 1.5 + 1) / effectiveSpeed, 
                         repeat: Infinity, 
                         ease: 'linear',
                         delay: Math.random() * 3

@@ -85,13 +85,144 @@ export default function SettingsView({ preferences, setPreferences, onReset, log
              </button>
           </div>
 
-          <div className="pt-6 border-t border-white/5 space-y-6">
-             <div className="flex items-center justify-between px-2">
-                <div className="space-y-1">
-                   <div className="text-sm font-bold italic tracking-tight uppercase">UI Scale</div>
-                   <div className="text-[10px] font-black opacity-30 uppercase tracking-widest">Manual scaling control</div>
+          <div className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.03] border border-white/5">
+             <div className="space-y-1">
+                <div className="text-sm font-bold italic tracking-tight uppercase">Compact Hub Mode</div>
+                <div className="text-[10px] font-black opacity-30 uppercase tracking-widest">Optimized for accessibility</div>
+             </div>
+             <button 
+               onClick={() => setPreferences({ ...preferences, isCompactMode: !preferences.isCompactMode })}
+               className={cn(
+                 "w-12 h-6 rounded-full transition-all duration-500 relative p-1",
+                 preferences.isCompactMode ? "bg-indigo-600" : "bg-white/10"
+               )}
+             >
+                <motion.div 
+                  animate={{ x: preferences.isCompactMode ? 24 : 0 }}
+                  className="w-4 h-4 rounded-full bg-white shadow-lg"
+                />
+             </button>
+          </div>
+
+          <div className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.03] border border-white/5">
+             <div className="space-y-1">
+                <div className="text-sm font-bold italic tracking-tight uppercase">Performance Mode</div>
+                <div className="text-[10px] font-black opacity-30 uppercase tracking-widest">Reduce heavy visual effects</div>
+             </div>
+             <button 
+               onClick={() => setPreferences({ ...preferences, isPerformanceMode: !preferences.isPerformanceMode })}
+               className={cn(
+                 "w-12 h-6 rounded-full transition-all duration-500 relative p-1",
+                 preferences.isPerformanceMode ? "bg-emerald-600" : "bg-white/10"
+               )}
+             >
+                <motion.div 
+                  animate={{ x: preferences.isPerformanceMode ? 24 : 0 }}
+                  className="w-4 h-4 rounded-full bg-white shadow-lg"
+                />
+             </button>
+          </div>
+
+          <div className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.03] border border-white/5">
+             <div className="space-y-1">
+                <div className="text-sm font-bold italic tracking-tight uppercase">Battery Saver</div>
+                <div className="text-[10px] font-black opacity-30 uppercase tracking-widest">Static backgrounds & low cycles</div>
+             </div>
+             <button 
+               onClick={() => setPreferences({ ...preferences, isBatterySaver: !preferences.isBatterySaver })}
+               className={cn(
+                 "w-12 h-6 rounded-full transition-all duration-500 relative p-1",
+                 preferences.isBatterySaver ? "bg-amber-600" : "bg-white/10"
+               )}
+             >
+                <motion.div 
+                  animate={{ x: preferences.isBatterySaver ? 24 : 0 }}
+                  className="w-4 h-4 rounded-full bg-white shadow-lg"
+                />
+             </button>
+          </div>
+
+          <div className="pt-6 border-t border-white/5 space-y-8">
+             <div className="space-y-4">
+                <div className="flex items-center justify-between px-2">
+                   <div className="space-y-1">
+                      <div className="text-sm font-bold italic tracking-tight uppercase">Glow Intensity</div>
+                      <div className="text-[10px] font-black opacity-30 uppercase tracking-widest">Visual bloom effect</div>
+                   </div>
+                   <span className="text-[10px] font-black opacity-30 uppercase">{preferences.glowIntensity}%</span>
                 </div>
-                 <div className="flex items-center gap-2">
+                <div className="relative h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                   <motion.div 
+                      className="absolute inset-y-0 left-0 bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.5)]"
+                      style={{ width: `${preferences.glowIntensity}%` }}
+                   />
+                   <input 
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={preferences.glowIntensity || 100}
+                    onChange={(e) => setPreferences({ ...preferences, glowIntensity: parseInt(e.target.value) })}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                  />
+                </div>
+             </div>
+
+             <div className="space-y-4">
+                <div className="flex items-center justify-between px-2">
+                   <div className="space-y-1">
+                      <div className="text-sm font-bold italic tracking-tight uppercase">Animation Speed</div>
+                      <div className="text-[10px] font-black opacity-30 uppercase tracking-widest">Motion fluidiy control</div>
+                   </div>
+                   <span className="text-[10px] font-black opacity-30 uppercase">{preferences.animationIntensity}%</span>
+                </div>
+                <div className="relative h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                   <motion.div 
+                      className="absolute inset-y-0 left-0 bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]"
+                      style={{ width: `${preferences.animationIntensity}%` }}
+                   />
+                   <input 
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={preferences.animationIntensity || 100}
+                    onChange={(e) => setPreferences({ ...preferences, animationIntensity: parseInt(e.target.value) })}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                  />
+                </div>
+             </div>
+
+             <div className="space-y-4">
+                <div className="flex items-center justify-between px-2">
+                   <div className="space-y-1">
+                      <div className="text-sm font-bold italic tracking-tight uppercase">Camera Viewport</div>
+                      <div className="text-[10px] font-black opacity-30 uppercase tracking-widest">AI Focus framing</div>
+                   </div>
+                </div>
+                <div className="grid grid-cols-3 gap-2 px-2">
+                   {['small', 'medium', 'large'].map((size) => (
+                     <button
+                        key={size}
+                        onClick={() => setPreferences({ ...preferences, cameraSize: size as any })}
+                        className={cn(
+                          "py-3 rounded-xl border transition-all text-center group font-black text-[10px] uppercase tracking-widest",
+                          preferences.cameraSize === size 
+                            ? "bg-indigo-500/10 border-indigo-500/40 text-indigo-400" 
+                            : "bg-white/5 border-transparent hover:bg-white/[0.08]"
+                        )}
+                     >
+                        {size}
+                     </button>
+                   ))}
+                </div>
+             </div>
+
+             <div className="border-t border-white/5 pt-6 space-y-6">
+                <div className="flex items-center justify-between px-2">
+                   <div className="space-y-1">
+                      <div className="text-sm font-bold italic tracking-tight uppercase">UI Scale</div>
+                      <div className="text-[10px] font-black opacity-30 uppercase tracking-widest">Manual scaling control</div>
+                   </div>
+                   <div className="flex items-center gap-2">
                    <input 
                       type="number" 
                       value={preferences.uiScale ?? 100}
@@ -164,7 +295,8 @@ export default function SettingsView({ preferences, setPreferences, onReset, log
                 </button>
              </div>
           </div>
-        </section>
+        </div>
+      </section>
 
         {/* AI Integrations Section */}
         <section className="p-8 rounded-[3rem] glass-card border border-white/5 space-y-6">
